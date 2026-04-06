@@ -2,6 +2,7 @@ from PyQt5.QtCore import QDate, Qt, pyqtSignal
 from PyQt5.QtGui import QColor, QPainter
 from PyQt5.QtWidgets import QCalendarWidget
 
+from config import AppConfig
 from database import Database
 
 GREEN_BG = QColor("#c8e6c9")
@@ -13,9 +14,10 @@ RED_FG = QColor("#b71c1c")
 class TimesheetCalendar(QCalendarWidget):
     date_selected = pyqtSignal(QDate)
 
-    def __init__(self, db: Database, parent=None):
+    def __init__(self, db: Database, config: AppConfig, parent=None):
         super().__init__(parent)
         self.db = db
+        self.config = config
         self._day_totals: dict[int, float] = {}
         self._displayed_year = QDate.currentDate().year()
         self._displayed_month = QDate.currentDate().month()
@@ -47,7 +49,7 @@ class TimesheetCalendar(QCalendarWidget):
 
         total = self._day_totals.get(date.day(), 0.0)
 
-        if total >= 8.5:
+        if total >= self.config.daily_target_hours:
             bg, fg = GREEN_BG, GREEN_FG
         elif total > 0:
             bg, fg = RED_BG, RED_FG

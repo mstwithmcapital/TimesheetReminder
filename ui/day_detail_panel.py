@@ -6,10 +6,10 @@ from PyQt5.QtWidgets import (
     QVBoxLayout, QWidget,
 )
 
+from config import AppConfig
 from database import Database
 from state import AppState
 
-DAILY_TARGET = 8.5
 COL_ID = 0       # hidden
 COL_PROJECT = 1
 COL_CODE = 2
@@ -22,10 +22,11 @@ COLUMNS = ["id", "Project Name", "Code", "Description", "Billability", "Hours"]
 class DayDetailPanel(QWidget):
     entry_changed = pyqtSignal(str)   # date string → tells calendar to repaint
 
-    def __init__(self, db: Database, state: AppState, parent=None):
+    def __init__(self, db: Database, state: AppState, config: AppConfig, parent=None):
         super().__init__(parent)
         self.db = db
         self.state = state
+        self.config = config
         self._current_date: str | None = None
         self._updating = False   # guard against recursive itemChanged
 
@@ -41,7 +42,8 @@ class DayDetailPanel(QWidget):
         layout.addWidget(self.date_label)
 
         # Total bar
-        self.total_label = QLabel("Total: 0.0h / 8.5h")
+        target = self.config.daily_target_hours
+        self.total_label = QLabel(f"Total: 0.0h / {target}h")
         self.total_label.setStyleSheet("font-size:13px; padding:4px;")
         layout.addWidget(self.total_label)
 
@@ -162,9 +164,14 @@ class DayDetailPanel(QWidget):
             spin = self.table.cellWidget(row, COL_HOURS)
             if spin:
                 total += spin.value()
-        color = "#2e7d32" if total >= DAILY_TARGET else "#c62828"
-        self.total_label.setText(f"Total: {total:.2f}h / {DAILY_TARGET}h")
+        target = self.config.daily_target_hours
+        color = "#2e7d32" if total >= target else "#c62828"
+        self.total_label.setText(f"Total: {total:.2f}h / {target}h")
         self.total_label.setStyleSheet(f"font-size:13px; font-weight:bold; color:{color}; padding:4px;")
+
+    def refresh_target(self):
+        """Called after settings change to update the target label immediately."""
+        self._update_total()
 
     def _add_entry(self):
         if not self._current_date:

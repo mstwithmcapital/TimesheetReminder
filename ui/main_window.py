@@ -1,15 +1,16 @@
 import os
-from datetime import date, timedelta
+from datetime import date
 from pathlib import Path
 
 from PyQt5.QtCore import QDate, Qt
-from PyQt5.QtGui import QIcon, QPixmap, QPainter, QColor
+from PyQt5.QtGui import QColor, QIcon, QPainter, QPixmap
 from PyQt5.QtWidgets import (
     QAction, QApplication, QFileDialog, QHBoxLayout,
     QLabel, QMainWindow, QMenu, QSplitter, QSystemTrayIcon,
     QToolBar, QVBoxLayout, QWidget,
 )
 
+from config import AppConfig
 from database import Database
 from scheduler import SchedulerBridge
 from state import AppState
@@ -37,14 +38,21 @@ def _make_tray_icon() -> QIcon:
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, db: Database, state: AppState, bridge: SchedulerBridge):
+    def __init__(
+        self,
+        db: Database,
+        state: AppState,
+        bridge: SchedulerBridge,
+        config: AppConfig,
+    ) -> None:
         super().__init__()
         self.db = db
         self.state = state
         self.bridge = bridge
+        self.config = config
 
         self.setWindowTitle("Timesheet Tracker")
-        self.setMinimumSize(900, 560)
+        self.setMinimumSize(900, 580)
 
         self._build_ui()
         self._setup_tray()
@@ -53,7 +61,8 @@ class MainWindow(QMainWindow):
         # Load today by default
         self.calendar.setSelectedDate(QDate.currentDate())
 
-    def _build_ui(self):
+    def _build_ui(self) -> None:
+        # ── Toolbar ───────────────────────────────────────────────────────────
         toolbar = QToolBar("Main Toolbar")
         toolbar.setMovable(False)
         self.addToolBar(toolbar)
@@ -72,13 +81,19 @@ class MainWindow(QMainWindow):
         weekly_action.triggered.connect(lambda: self.open_weekly_summary("weekly"))
         toolbar.addAction(weekly_action)
 
-        # Central splitter
+        toolbar.addSeparator()
+
+        settings_action = QAction("Settings", self)
+        settings_action.triggered.connect(self._open_settings)
+        toolbar.addAction(settings_action)
+
+        # ── Central splitter ──────────────────────────────────────────────────
         splitter = QSplitter(Qt.Horizontal)
 
-        self.calendar = TimesheetCalendar(self.db)
+        self.calendar = TimesheetCalendar(self.db, self.config)
         splitter.addWidget(self.calendar)
 
-        self.day_panel = DayDetailPanel(self.db, self.state)
+        self.day_panel = DayDetailPanel(self.db, self.state, self.config)
         splitter.addWidget(self.day_panel)
 
         splitter.setStretchFactor(0, 2)
@@ -86,7 +101,12 @@ class MainWindow(QMainWindow):
 
         self.setCentralWidget(splitter)
 
-    def _setup_tray(self):
+        # ── Status bar — Feature 2: shows where data is persisted ─────────────
+        data_dir = str(Path(os.getenv("APPDATA", "")) / "TimesheetReminder")
+        self.statusBar().showMessage(f"Data saved to: {data_dir}")
+        self.statusBar().setStyleSheet("color: #555; font-size: 11px;")
+
+    def _setup_tray(self) -> None:
         self.tray = QSystemTrayIcon(self)
         self.tray.setIcon(_make_tray_icon())
         self.tray.setToolTip("Timesheet Tracker")
@@ -104,7 +124,7 @@ class MainWindow(QMainWindow):
         self.tray.activated.connect(self._on_tray_activated)
         self.tray.show()
 
-    def _connect_signals(self):
+    def _connect_signals(self) -> None:
         self.calendar.date_selected.connect(self._on_date_selected)
         self.day_panel.entry_changed.connect(self._on_entry_changed)
 
@@ -112,15 +132,17 @@ class MainWindow(QMainWindow):
         self.bridge.show_eod_summary.connect(self.open_eod_dialog)
         self.bridge.show_weekly_summary.connect(self.open_weekly_summary)
 
-    def _on_date_selected(self, qdate: QDate):
+    # ── Slots ─────────────────────────────────────────────────────────────────
+
+    def _on_date_selected(self, qdate: QDate) -> None:
         date_str = qdate.toString("yyyy-MM-dd")
         self.day_panel.load_date(date_str)
 
-    def _on_entry_changed(self, date_str: str):
+    def _on_entry_changed(self, date_str: str) -> None:
         d = date.fromisoformat(date_str)
         self.calendar.refresh_month(d.year, d.month)
 
-    def open_work_popup(self):
+    def open_work_popup(self) -> None:
         from ui.work_popup import WorkPopupDialog
         dlg = WorkPopupDialog(self.db, self.state, add_mode=False, parent=self)
         if dlg.exec_() == WorkPopupDialog.Accepted:
@@ -128,18 +150,27 @@ class MainWindow(QMainWindow):
             self.day_panel.load_date(today)
             self.calendar.refresh_month(date.today().year, date.today().month)
 
-    def open_eod_dialog(self):
+    def open_eod_dialog(self) -> None:
         from ui.end_of_day_dialog import EndOfDayDialog
         today = date.today().isoformat()
         dlg = EndOfDayDialog(self.db, self.state, date_str=today, parent=self)
         dlg.exec_()
 
-    def open_weekly_summary(self, mode: str = "weekly"):
+    def open_weekly_summary(self, mode: str = "weekly") -> None:
         from ui.weekly_summary_dialog import WeeklySummaryDialog
         dlg = WeeklySummaryDialog(self.db, self.state, mode=mode, parent=self)
         dlg.exec_()
 
-    def _export_week(self):
+    def _open_settings(self) -> None:
+        from ui.settings_dialog import SettingsDialog
+        dlg = SettingsDialog(self.config, parent=self)
+        if dlg.exec_() == SettingsDialog.Accepted:
+            # Refresh widgets that depend on daily_target_hours
+            self.day_panel.refresh_target()
+            today = date.today()
+            self.calendar.refresh_month(today.year, today.month)
+
+    def _export_week(self) -> None:
         from ui.export import export_week_to_excel
         today = date.today()
         iso = today.isocalendar()
@@ -156,16 +187,16 @@ class MainWindow(QMainWindow):
                 QSystemTrayIcon.Information, 3000
             )
 
-    def _show_window(self):
+    def _show_window(self) -> None:
         self.show()
         self.raise_()
         self.activateWindow()
 
-    def _on_tray_activated(self, reason):
+    def _on_tray_activated(self, reason) -> None:
         if reason == QSystemTrayIcon.DoubleClick:
             self._show_window()
 
-    def closeEvent(self, event):
+    def closeEvent(self, event) -> None:
         # Hide to tray instead of quitting
         event.ignore()
         self.hide()
