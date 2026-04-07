@@ -6,8 +6,8 @@ from PyQt5.QtCore import QDate, Qt
 from PyQt5.QtGui import QColor, QIcon, QPainter, QPixmap
 from PyQt5.QtWidgets import (
     QAction, QApplication, QFileDialog, QHBoxLayout,
-    QLabel, QMainWindow, QMenu, QSplitter, QSystemTrayIcon,
-    QToolBar, QVBoxLayout, QWidget,
+    QLabel, QMainWindow, QMenu, QSizePolicy, QSplitter,
+    QSystemTrayIcon, QToolBar, QVBoxLayout, QWidget,
 )
 
 from config import AppConfig
@@ -52,7 +52,7 @@ class MainWindow(QMainWindow):
         self.config = config
 
         self.setWindowTitle("Timesheet Tracker")
-        self.setMinimumSize(900, 580)
+        self.setMinimumSize(700, 460)
 
         self._build_ui()
         self._setup_tray()
@@ -87,13 +87,20 @@ class MainWindow(QMainWindow):
         settings_action.triggered.connect(self._open_settings)
         toolbar.addAction(settings_action)
 
+        projects_action = QAction("Manage Projects", self)
+        projects_action.triggered.connect(self._open_project_manager)
+        toolbar.addAction(projects_action)
+
         # ── Central splitter ──────────────────────────────────────────────────
         splitter = QSplitter(Qt.Horizontal)
+        splitter.setChildrenCollapsible(False)
 
         self.calendar = TimesheetCalendar(self.db, self.config)
+        self.calendar.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         splitter.addWidget(self.calendar)
 
         self.day_panel = DayDetailPanel(self.db, self.state, self.config)
+        self.day_panel.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         splitter.addWidget(self.day_panel)
 
         splitter.setStretchFactor(0, 2)
@@ -169,6 +176,11 @@ class MainWindow(QMainWindow):
             self.day_panel.refresh_target()
             today = date.today()
             self.calendar.refresh_month(today.year, today.month)
+
+    def _open_project_manager(self) -> None:
+        from ui.project_manager_dialog import ProjectManagerDialog
+        dlg = ProjectManagerDialog(self.db, parent=self)
+        dlg.exec_()
 
     def _export_week(self) -> None:
         from ui.export import export_week_to_excel

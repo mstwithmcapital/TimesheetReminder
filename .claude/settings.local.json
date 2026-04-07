@@ -3,7 +3,8 @@
     "allow": [
       "Bash(pip install:*)",
       "Bash(pip show:*)",
-      "Bash(python -c ':*)"
+      "Bash(python -c ':*)",
+      "Bash(wc -l \"/d/Maharshi/3.Other/TimesheetReminder/TimesheetReminder\"/*.py \"/d/Maharshi/3.Other/TimesheetReminder/TimesheetReminder/ui\"/*.py)"
     ]
   }
 }

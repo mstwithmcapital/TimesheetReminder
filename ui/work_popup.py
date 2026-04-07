@@ -108,7 +108,8 @@ class WorkPopupDialog(QDialog):
     def _on_project_changed(self, name: str):
         proj = self._project_map.get(name)
         if proj:
-            self.code_edit.setText(proj["code"])
+            if proj["code"]:
+                self.code_edit.setText(proj["code"])
             if proj["default_description"]:
                 self.desc_edit.setText(proj["default_description"])
             idx = self.bill_combo.findText(proj["billability"])
@@ -130,12 +131,24 @@ class WorkPopupDialog(QDialog):
         billability = self.bill_combo.currentText()
         hours = self.hours_spin.value()
 
-        self.db.add_entry(
-            self.target_date, project_name, code, description, billability, hours
-        )
+        if self._entry_id is not None:
+            # Edit mode — update the existing entry
+            self.db.update_entry(
+                self._entry_id,
+                project_name=project_name,
+                project_code=code,
+                description=description,
+                billability=billability,
+                hours=hours,
+            )
+        else:
+            self.db.add_entry(
+                self.target_date, project_name, code, description, billability, hours
+            )
+
         self.db.upsert_project(project_name, code, description, billability)
 
-        if not self.add_mode:
+        if not self.add_mode and self._entry_id is None:
             self.state.record_popup_shown()
 
         self.accept()
@@ -143,7 +156,11 @@ class WorkPopupDialog(QDialog):
     def prefill(self, entry: dict):
         """Pre-fill form for editing an existing entry (called before exec_())."""
         self._entry_id = entry["id"]
+        self.setWindowTitle("Edit Entry")
+        # Block project_changed signal while pre-filling so it doesn't overwrite values
+        self.project_combo.blockSignals(True)
         self.project_combo.setCurrentText(entry["project_name"])
+        self.project_combo.blockSignals(False)
         self.code_edit.setText(entry["project_code"])
         self.desc_edit.setText(entry["description"])
         idx = self.bill_combo.findText(entry["billability"])

@@ -63,10 +63,14 @@ class DayDetailPanel(QWidget):
         self.add_btn = QPushButton("+ Add Entry")
         self.add_btn.setStyleSheet("background:#1565c0; color:white; padding:6px 12px; border-radius:4px;")
         self.add_btn.clicked.connect(self._add_entry)
+        self.edit_btn = QPushButton("Edit Selected")
+        self.edit_btn.setStyleSheet("background:#f57c00; color:white; padding:6px 12px; border-radius:4px;")
+        self.edit_btn.clicked.connect(self._edit_selected)
         self.del_btn = QPushButton("Delete Selected")
         self.del_btn.setStyleSheet("background:#c62828; color:white; padding:6px 12px; border-radius:4px;")
         self.del_btn.clicked.connect(self._delete_selected)
         btn_row.addWidget(self.add_btn)
+        btn_row.addWidget(self.edit_btn)
         btn_row.addWidget(self.del_btn)
         btn_row.addStretch()
         layout.addLayout(btn_row)
@@ -179,6 +183,31 @@ class DayDetailPanel(QWidget):
         from ui.work_popup import WorkPopupDialog
         dlg = WorkPopupDialog(self.db, self.state, add_mode=True,
                                prefill_date=self._current_date, parent=self)
+        if dlg.exec_() == WorkPopupDialog.Accepted:
+            self._refresh_table()
+            self.entry_changed.emit(self._current_date)
+
+    def _edit_selected(self):
+        rows = self.table.selectionModel().selectedRows()
+        if not rows:
+            return
+        row = rows[0].row()
+        entry_id = int(self.table.item(row, COL_ID).text())
+        # Rebuild entry dict from current row widgets
+        spin = self.table.cellWidget(row, COL_HOURS)
+        bill = self.table.cellWidget(row, COL_BILL)
+        entry = {
+            "id": entry_id,
+            "project_name": self.table.item(row, COL_PROJECT).text(),
+            "project_code": self.table.item(row, COL_CODE).text(),
+            "description": self.table.item(row, COL_DESC).text(),
+            "billability": bill.currentText() if bill else "Billable",
+            "hours": spin.value() if spin else 1.0,
+        }
+        from ui.work_popup import WorkPopupDialog
+        dlg = WorkPopupDialog(self.db, self.state, add_mode=True,
+                               prefill_date=self._current_date, parent=self)
+        dlg.prefill(entry)
         if dlg.exec_() == WorkPopupDialog.Accepted:
             self._refresh_table()
             self.entry_changed.emit(self._current_date)

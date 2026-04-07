@@ -1,6 +1,6 @@
 from PyQt5.QtCore import QDate, Qt, pyqtSignal
 from PyQt5.QtGui import QColor, QPainter
-from PyQt5.QtWidgets import QCalendarWidget
+from PyQt5.QtWidgets import QCalendarWidget, QSizePolicy
 
 from config import AppConfig
 from database import Database
@@ -24,7 +24,8 @@ class TimesheetCalendar(QCalendarWidget):
 
         self.setGridVisible(True)
         self.setVerticalHeaderFormat(QCalendarWidget.NoVerticalHeader)
-        self.setMinimumSize(380, 280)
+        self.setMinimumSize(280, 220)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
         self.selectionChanged.connect(self._on_selection_changed)
         self.currentPageChanged.connect(self._on_page_changed)
@@ -39,7 +40,7 @@ class TimesheetCalendar(QCalendarWidget):
         self._day_totals = {
             int(k.split("-")[2]): v for k, v in totals.items()
         }
-        self.update()
+        self.repaint()
 
     def paintCell(self, painter: QPainter, rect, date: QDate):
         # Only color cells belonging to the currently displayed month

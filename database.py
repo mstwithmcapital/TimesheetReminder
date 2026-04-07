@@ -67,16 +67,29 @@ class Database:
 
     def get_all_projects(self) -> list[dict]:
         rows = self._conn().execute(
-            "SELECT name, code, default_description, billability FROM projects ORDER BY name"
+            "SELECT id, name, code, default_description, billability FROM projects ORDER BY name"
         ).fetchall()
         return [dict(r) for r in rows]
 
     def get_project_by_name(self, name: str) -> dict | None:
         row = self._conn().execute(
-            "SELECT name, code, default_description, billability FROM projects WHERE name=?",
+            "SELECT id, name, code, default_description, billability FROM projects WHERE name=?",
             (name,),
         ).fetchone()
         return dict(row) if row else None
+
+    def update_project(self, project_id: int, name: str, code: str,
+                       default_description: str, billability: str):
+        self._conn().execute(
+            """UPDATE projects SET name=?, code=?, default_description=?, billability=?
+               WHERE id=?""",
+            (name, code, default_description, billability, project_id),
+        )
+        self._conn().commit()
+
+    def delete_project(self, project_id: int):
+        self._conn().execute("DELETE FROM projects WHERE id=?", (project_id,))
+        self._conn().commit()
 
     # ── Entries ───────────────────────────────────────────────────────────────
 
