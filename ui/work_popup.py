@@ -149,7 +149,7 @@ class WorkPopupDialog(QDialog):
         self.db.upsert_project(project_name, code, description, billability)
 
         if not self.add_mode and self._entry_id is None:
-            self.state.record_popup_shown()
+            self.state.record_popup_saved()
 
         self.accept()
 

@@ -8,7 +8,8 @@ class AppState:
     STATE_FILE = Path(os.getenv("APPDATA", "")) / "TimesheetReminder" / "state.json"
 
     def __init__(self):
-        self.last_popup_time: datetime | None = None
+        self.last_popup_time: datetime | None = None        # when user last SAVED a popup entry
+        self.last_popup_shown_time: datetime | None = None  # when popup last appeared (for throttle)
         self.first_launch_date: str | None = None
         self.weekly_submitted_for: str | None = None
         self.saturday_submitted_for: str | None = None
@@ -21,6 +22,8 @@ class AppState:
             data = json.loads(self.STATE_FILE.read_text(encoding="utf-8"))
             raw = data.get("last_popup_time")
             self.last_popup_time = datetime.fromisoformat(raw) if raw else None
+            raw2 = data.get("last_popup_shown_time")
+            self.last_popup_shown_time = datetime.fromisoformat(raw2) if raw2 else None
             self.first_launch_date = data.get("first_launch_date")
             self.weekly_submitted_for = data.get("weekly_submitted_for")
             self.saturday_submitted_for = data.get("saturday_submitted_for")
@@ -32,6 +35,7 @@ class AppState:
         self.STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
         data = {
             "last_popup_time": self.last_popup_time.isoformat() if self.last_popup_time else None,
+            "last_popup_shown_time": self.last_popup_shown_time.isoformat() if self.last_popup_shown_time else None,
             "first_launch_date": self.first_launch_date,
             "weekly_submitted_for": self.weekly_submitted_for,
             "saturday_submitted_for": self.saturday_submitted_for,
@@ -53,6 +57,12 @@ class AppState:
         return max(0.25, min(rounded, 4.0))
 
     def record_popup_shown(self):
+        """Call when a popup is displayed — updates throttle timer."""
+        self.last_popup_shown_time = datetime.now()
+        self.save()
+
+    def record_popup_saved(self):
+        """Call when user saves an entry in the popup — updates hours-since-last calculation."""
         self.last_popup_time = datetime.now()
         self.save()
 

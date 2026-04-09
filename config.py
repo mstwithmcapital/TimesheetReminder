@@ -13,6 +13,8 @@ _DEFAULTS: dict = {
     "daily_target_hours": 8.5,        # green threshold in calendar / detail panel
     "eod_reminder_hour": 19,          # end-of-day dialog trigger (19:25 default)
     "eod_reminder_minute": 25,
+    "pre_eod_warning_minutes": 60,    # start frequent reminders this many minutes before work_end
+    "pre_eod_interval_minutes": 10,   # reminder interval during pre-EOD window
 }
 
 
@@ -35,6 +37,8 @@ class AppConfig:
         self.daily_target_hours: float = _DEFAULTS["daily_target_hours"]
         self.eod_reminder_hour: int = _DEFAULTS["eod_reminder_hour"]
         self.eod_reminder_minute: int = _DEFAULTS["eod_reminder_minute"]
+        self.pre_eod_warning_minutes: int = _DEFAULTS["pre_eod_warning_minutes"]
+        self.pre_eod_interval_minutes: int = _DEFAULTS["pre_eod_interval_minutes"]
 
     # ── Persistence ───────────────────────────────────────────────────────────
 
@@ -57,6 +61,12 @@ class AppConfig:
             self.eod_reminder_minute = int(
                 data.get("eod_reminder_minute", _DEFAULTS["eod_reminder_minute"])
             )
+            self.pre_eod_warning_minutes = int(
+                data.get("pre_eod_warning_minutes", _DEFAULTS["pre_eod_warning_minutes"])
+            )
+            self.pre_eod_interval_minutes = int(
+                data.get("pre_eod_interval_minutes", _DEFAULTS["pre_eod_interval_minutes"])
+            )
         except Exception:
             pass  # silently keep defaults if file is malformed
 
@@ -71,6 +81,8 @@ class AppConfig:
             "daily_target_hours": self.daily_target_hours,
             "eod_reminder_hour": self.eod_reminder_hour,
             "eod_reminder_minute": self.eod_reminder_minute,
+            "pre_eod_warning_minutes": self.pre_eod_warning_minutes,
+            "pre_eod_interval_minutes": self.pre_eod_interval_minutes,
         }
         tmp = self.CONFIG_FILE.parent / "_config_tmp.json"
         tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")

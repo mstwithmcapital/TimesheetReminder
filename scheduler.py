@@ -73,9 +73,15 @@ class SchedulerThread(threading.Thread):
         if not (popup_start <= now <= popup_end):
             return
 
-        # Throttle: only fire once per configured interval
-        interval_seconds = self.config.reminder_interval_hours * 3600 - 100  # 100 s buffer
-        last = self.state.last_popup_time
+        # Determine interval: switch to faster pre-EOD reminders when close to end of day
+        minutes_to_eod = (popup_end - now).total_seconds() / 60
+        if 0 < minutes_to_eod <= self.config.pre_eod_warning_minutes:
+            interval_seconds = self.config.pre_eod_interval_minutes * 60
+        else:
+            interval_seconds = self.config.reminder_interval_hours * 3600
+
+        # Throttle: use last_popup_shown_time so cancelling a popup still resets the timer
+        last = self.state.last_popup_shown_time or self.state.last_popup_time
         if last is not None:
             elapsed = (now - last.replace(tzinfo=None)).total_seconds()
             if elapsed < interval_seconds:

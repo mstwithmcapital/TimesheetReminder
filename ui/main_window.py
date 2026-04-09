@@ -151,11 +151,20 @@ class MainWindow(QMainWindow):
 
     def open_work_popup(self) -> None:
         from ui.work_popup import WorkPopupDialog
-        dlg = WorkPopupDialog(self.db, self.state, add_mode=False, parent=self)
-        if dlg.exec_() == WorkPopupDialog.Accepted:
-            today = date.today().isoformat()
-            self.day_panel.load_date(today)
-            self.calendar.refresh_month(date.today().year, date.today().month)
+        # Guard: don't stack multiple popups if scheduler fires while one is already open
+        if getattr(self, "_popup_open", False):
+            return
+        self._popup_open = True
+        # Record shown time now so scheduler throttle resets even if user cancels
+        self.state.record_popup_shown()
+        try:
+            dlg = WorkPopupDialog(self.db, self.state, add_mode=False, parent=self)
+            if dlg.exec_() == WorkPopupDialog.Accepted:
+                today = date.today().isoformat()
+                self.day_panel.load_date(today)
+                self.calendar.refresh_month(date.today().year, date.today().month)
+        finally:
+            self._popup_open = False
 
     def open_eod_dialog(self) -> None:
         from ui.end_of_day_dialog import EndOfDayDialog

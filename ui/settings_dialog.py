@@ -1,6 +1,6 @@
 from PyQt5.QtCore import QTime
 from PyQt5.QtWidgets import (
-    QDialog, QDialogButtonBox, QDoubleSpinBox,
+    QDialog, QDialogButtonBox, QDoubleSpinBox, QSpinBox,
     QFormLayout, QGroupBox, QTimeEdit, QVBoxLayout,
 )
 
@@ -82,6 +82,33 @@ class SettingsDialog(QDialog):
 
         layout.addWidget(target_group)
 
+        # ── Pre-EOD frequent reminders ─────────────────────────────────────────
+        pre_eod_group = QGroupBox("Pre-End-of-Day Reminders")
+        form3 = QFormLayout(pre_eod_group)
+        form3.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
+
+        self.pre_eod_warning_spin = QSpinBox()
+        self.pre_eod_warning_spin.setRange(5, 180)
+        self.pre_eod_warning_spin.setSingleStep(5)
+        self.pre_eod_warning_spin.setSuffix("  min before end")
+        self.pre_eod_warning_spin.setToolTip(
+            "How many minutes before work end time to switch to faster reminders."
+        )
+        self.pre_eod_warning_spin.setValue(self.config.pre_eod_warning_minutes)
+        form3.addRow("Start frequent reminders:", self.pre_eod_warning_spin)
+
+        self.pre_eod_interval_spin = QSpinBox()
+        self.pre_eod_interval_spin.setRange(1, 60)
+        self.pre_eod_interval_spin.setSingleStep(1)
+        self.pre_eod_interval_spin.setSuffix("  min interval")
+        self.pre_eod_interval_spin.setToolTip(
+            "How often (in minutes) to show reminders during the pre-EOD window."
+        )
+        self.pre_eod_interval_spin.setValue(self.config.pre_eod_interval_minutes)
+        form3.addRow("Reminder frequency:", self.pre_eod_interval_spin)
+
+        layout.addWidget(pre_eod_group)
+
         # ── Buttons ───────────────────────────────────────────────────────────
         buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
         buttons.accepted.connect(self._save)
@@ -106,6 +133,9 @@ class SettingsDialog(QDialog):
         t = self.eod_time.time()
         self.config.eod_reminder_hour = t.hour()
         self.config.eod_reminder_minute = t.minute()
+
+        self.config.pre_eod_warning_minutes = self.pre_eod_warning_spin.value()
+        self.config.pre_eod_interval_minutes = self.pre_eod_interval_spin.value()
 
         self.config.save()
         self.accept()
