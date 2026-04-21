@@ -50,6 +50,17 @@ class Database:
         """)
         c.commit()
 
+        # Schema migrations — idempotent, safe to run on every start
+        for col, defn in [
+            ("entry_type", "TEXT NOT NULL DEFAULT 'project'"),
+            ("job_task_no", "TEXT NOT NULL DEFAULT ''"),
+        ]:
+            try:
+                c.execute(f"ALTER TABLE entries ADD COLUMN {col} {defn}")
+                c.commit()
+            except sqlite3.OperationalError:
+                pass  # column already exists
+
     # ── Projects ──────────────────────────────────────────────────────────────
 
     def upsert_project(self, name: str, code: str,
@@ -95,14 +106,17 @@ class Database:
 
     def add_entry(self, date_str: str, project_name: str, project_code: str,
                   description: str, billability: str, hours: float,
-                  is_auto_added: bool = False) -> int:
+                  is_auto_added: bool = False,
+                  entry_type: str = "project", job_task_no: str = "") -> int:
         cur = self._conn().execute(
             """INSERT INTO entries
-               (date, project_name, project_code, description, billability, hours, is_auto_added, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+               (date, project_name, project_code, description, billability, hours,
+                is_auto_added, created_at, entry_type, job_task_no)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (date_str, project_name, project_code, description, billability,
              hours, 1 if is_auto_added else 0,
-             datetime.now().isoformat(timespec="seconds")),
+             datetime.now().isoformat(timespec="seconds"),
+             entry_type, job_task_no),
         )
         self._conn().commit()
         return cur.lastrowid
@@ -110,7 +124,8 @@ class Database:
     def update_entry(self, entry_id: int, **fields):
         if not fields:
             return
-        allowed = {"project_name", "project_code", "description", "billability", "hours"}
+        allowed = {"project_name", "project_code", "description", "billability",
+                   "hours", "entry_type", "job_task_no"}
         fields = {k: v for k, v in fields.items() if k in allowed}
         if not fields:
             return
@@ -153,6 +168,29 @@ class Database:
             (start, end.isoformat()),
         ).fetchall()
         return {r["date"]: r["total"] for r in rows}
+
+    def get_daily_total(self, date_str: str) -> float:
+        row = self._conn().execute(
+            "SELECT COALESCE(SUM(hours), 0.0) as total FROM entries WHERE date=?",
+            (date_str,),
+        ).fetchone()
+        return float(row["total"]) if row else 0.0
+
+    def get_entry_by_id(self, entry_id: int) -> dict | None:
+        row = self._conn().execute(
+            "SELECT * FROM entries WHERE id=?", (entry_id,)
+        ).fetchone()
+        return dict(row) if row else None
+
+    def get_entry_by_project_date(self, date_str: str, project_name: str,
+                                   project_code: str) -> dict | None:
+        row = self._conn().execute(
+            """SELECT * FROM entries
+               WHERE date=? AND project_name=? AND project_code=?
+               AND is_auto_added=0 LIMIT 1""",
+            (date_str, project_name, project_code),
+        ).fetchone()
+        return dict(row) if row else None
 
     def has_auto_entry_today(self, date_str: str) -> bool:
         row = self._conn().execute(

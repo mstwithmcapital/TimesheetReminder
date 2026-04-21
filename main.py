@@ -126,7 +126,7 @@ def main() -> None:
     bridge = SchedulerBridge()
     window = MainWindow(db, state, bridge, config)
 
-    SchedulerThread(bridge, state, config).start()
+    SchedulerThread(bridge, state, config, db).start()
 
     window.show()
     sys.exit(app.exec_())

@@ -2,8 +2,7 @@ import os
 from datetime import date
 from pathlib import Path
 
-from PyQt5.QtCore import QDate, Qt
-from PyQt5.QtGui import QColor, QIcon, QPainter, QPixmap
+from PyQt5.QtCore import QDate, Qt, QTimer
 from PyQt5.QtWidgets import (
     QAction, QApplication, QFileDialog, QHBoxLayout,
     QLabel, QMainWindow, QMenu, QSizePolicy, QSplitter,
@@ -16,25 +15,7 @@ from scheduler import SchedulerBridge
 from state import AppState
 from ui.calendar_widget import TimesheetCalendar
 from ui.day_detail_panel import DayDetailPanel
-
-
-def _make_tray_icon() -> QIcon:
-    """Generate a simple clock icon programmatically."""
-    px = QPixmap(64, 64)
-    px.fill(Qt.transparent)
-    p = QPainter(px)
-    p.setRenderHint(QPainter.Antialiasing)
-    p.setBrush(QColor("#1565c0"))
-    p.setPen(Qt.NoPen)
-    p.drawEllipse(0, 0, 64, 64)
-    p.setBrush(QColor("white"))
-    p.drawEllipse(6, 6, 52, 52)
-    p.setPen(QColor("#1565c0"))
-    from PyQt5.QtCore import QPoint
-    p.drawLine(QPoint(32, 32), QPoint(32, 14))   # minute hand up
-    p.drawLine(QPoint(32, 32), QPoint(46, 32))   # hour hand right
-    p.end()
-    return QIcon(px)
+from ui.icons import make_app_icon
 
 
 class MainWindow(QMainWindow):
@@ -52,7 +33,9 @@ class MainWindow(QMainWindow):
         self.config = config
 
         self.setWindowTitle("Timesheet Tracker")
-        self.setMinimumSize(700, 460)
+        self.setWindowIcon(make_app_icon())
+        self.setMinimumSize(780, 520)
+        self.resize(980, 640)
 
         self._build_ui()
         self._setup_tray()
@@ -60,6 +43,25 @@ class MainWindow(QMainWindow):
 
         # Load today by default
         self.calendar.setSelectedDate(QDate.currentDate())
+
+        # Set splitter proportions after the event loop starts so the window
+        # geometry is finalised and the splitter gets real pixel values.
+        QTimer.singleShot(0, self._init_splitter_sizes)
+
+    def _init_splitter_sizes(self):
+        total = self.splitter.width()
+        self.splitter.setSizes([int(total * 0.38), int(total * 0.62)])
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        # Keep splitter proportions on every resize
+        total = self.splitter.width()
+        if total > 0:
+            sizes = self.splitter.sizes()
+            current_total = sum(sizes)
+            if current_total > 0:
+                ratio = sizes[0] / current_total
+                self.splitter.setSizes([int(total * ratio), total - int(total * ratio)])
 
     def _build_ui(self) -> None:
         # ── Toolbar ───────────────────────────────────────────────────────────
@@ -92,30 +94,29 @@ class MainWindow(QMainWindow):
         toolbar.addAction(projects_action)
 
         # ── Central splitter ──────────────────────────────────────────────────
-        splitter = QSplitter(Qt.Horizontal)
-        splitter.setChildrenCollapsible(False)
+        self.splitter = QSplitter(Qt.Horizontal)
+        self.splitter.setChildrenCollapsible(False)
 
         self.calendar = TimesheetCalendar(self.db, self.config)
         self.calendar.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        splitter.addWidget(self.calendar)
+        self.splitter.addWidget(self.calendar)
 
         self.day_panel = DayDetailPanel(self.db, self.state, self.config)
         self.day_panel.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        splitter.addWidget(self.day_panel)
+        self.splitter.addWidget(self.day_panel)
 
-        splitter.setStretchFactor(0, 2)
-        splitter.setStretchFactor(1, 3)
+        self.splitter.setStretchFactor(0, 2)
+        self.splitter.setStretchFactor(1, 3)
 
-        self.setCentralWidget(splitter)
+        self.setCentralWidget(self.splitter)
 
-        # ── Status bar — Feature 2: shows where data is persisted ─────────────
         data_dir = str(Path(os.getenv("APPDATA", "")) / "TimesheetReminder")
         self.statusBar().showMessage(f"Data saved to: {data_dir}")
         self.statusBar().setStyleSheet("color: #555; font-size: 11px;")
 
     def _setup_tray(self) -> None:
         self.tray = QSystemTrayIcon(self)
-        self.tray.setIcon(_make_tray_icon())
+        self.tray.setIcon(make_app_icon())
         self.tray.setToolTip("Timesheet Tracker")
 
         menu = QMenu()
@@ -138,6 +139,7 @@ class MainWindow(QMainWindow):
         self.bridge.show_work_popup.connect(self.open_work_popup)
         self.bridge.show_eod_summary.connect(self.open_eod_dialog)
         self.bridge.show_weekly_summary.connect(self.open_weekly_summary)
+        self.bridge.refresh_entries.connect(self._on_refresh_entries)
 
     # ── Slots ─────────────────────────────────────────────────────────────────
 
@@ -149,13 +151,17 @@ class MainWindow(QMainWindow):
         d = date.fromisoformat(date_str)
         self.calendar.refresh_month(d.year, d.month)
 
+    def _on_refresh_entries(self) -> None:
+        """Called when scheduler auto-adds a standup entry."""
+        today = date.today().isoformat()
+        self.day_panel.load_date(today)
+        self.calendar.refresh_month(date.today().year, date.today().month)
+
     def open_work_popup(self) -> None:
         from ui.work_popup import WorkPopupDialog
-        # Guard: don't stack multiple popups if scheduler fires while one is already open
         if getattr(self, "_popup_open", False):
             return
         self._popup_open = True
-        # Record shown time now so scheduler throttle resets even if user cancels
         self.state.record_popup_shown()
         try:
             dlg = WorkPopupDialog(self.db, self.state, add_mode=False, parent=self)
@@ -181,7 +187,6 @@ class MainWindow(QMainWindow):
         from ui.settings_dialog import SettingsDialog
         dlg = SettingsDialog(self.config, parent=self)
         if dlg.exec_() == SettingsDialog.Accepted:
-            # Refresh widgets that depend on daily_target_hours
             self.day_panel.refresh_target()
             today = date.today()
             self.calendar.refresh_month(today.year, today.month)
@@ -218,7 +223,6 @@ class MainWindow(QMainWindow):
             self._show_window()
 
     def closeEvent(self, event) -> None:
-        # Hide to tray instead of quitting
         event.ignore()
         self.hide()
         self.tray.showMessage(

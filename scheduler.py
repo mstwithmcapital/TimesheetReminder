@@ -27,18 +27,22 @@ class SchedulerBridge(QObject):
     show_work_popup = pyqtSignal()
     show_eod_summary = pyqtSignal()
     show_weekly_summary = pyqtSignal(str)   # "weekly" | "saturday"
+    refresh_entries = pyqtSignal()          # emitted after auto standup is added
 
 
 class SchedulerThread(threading.Thread):
-    def __init__(self, bridge: SchedulerBridge, state: AppState, config: AppConfig) -> None:
+    def __init__(self, bridge: SchedulerBridge, state: AppState,
+                 config: AppConfig, db) -> None:
         super().__init__(daemon=True, name="scheduler")
         self.bridge = bridge
         self.state = state
         self.config = config
+        self.db = db
         self._last_hourly_check: datetime | None = None
 
     def run(self) -> None:
         # Check every 60 seconds; individual methods guard their own timing.
+        schedule.every(1).minutes.do(self._check_daily_standup)
         schedule.every(1).minutes.do(self._check_hourly)
         schedule.every(1).minutes.do(self._check_eod)
         schedule.every(1).minutes.do(self._check_weekly)
@@ -49,6 +53,35 @@ class SchedulerThread(threading.Thread):
             time.sleep(30)
 
     # ── Individual checks ─────────────────────────────────────────────────────
+
+    def _check_daily_standup(self) -> None:
+        """Add the daily standup entry if missing — handles wake-from-sleep."""
+        now = datetime.now()
+        today = now.date()
+        today_str = today.isoformat()
+
+        if not _is_workday(today):
+            first_sat = _get_first_saturday(today.year, today.month)
+            if today != first_sat:
+                return
+
+        # Only add after work day starts to avoid midnight entries
+        if now.hour < self.config.work_start_hour:
+            return
+
+        if self.db.has_auto_entry_today(today_str):
+            return
+
+        self.db.add_entry(
+            today_str,
+            "Internal Meeting",
+            "",
+            "Daily standup / internal meeting",
+            "Non-Billable",
+            0.5,
+            is_auto_added=True,
+        )
+        self.bridge.refresh_entries.emit()
 
     def _check_hourly(self) -> None:
         now = datetime.now()
@@ -72,6 +105,15 @@ class SchedulerThread(threading.Thread):
         )
         if not (popup_start <= now <= popup_end):
             return
+
+        # Skip popups when daily target already met, except on Friday and first Saturday
+        # (those days always warrant logging reminders)
+        is_friday = now.weekday() == 4
+        is_first_sat = (today == _get_first_saturday(today.year, today.month))
+        if not is_friday and not is_first_sat:
+            daily_total = self.db.get_daily_total(today.isoformat())
+            if daily_total >= self.config.daily_target_hours:
+                return
 
         # Determine interval: switch to faster pre-EOD reminders when close to end of day
         minutes_to_eod = (popup_end - now).total_seconds() / 60
