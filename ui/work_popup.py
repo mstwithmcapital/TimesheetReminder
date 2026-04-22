@@ -161,6 +161,24 @@ class WorkPopupDialog(QDialog):
         completer.setFilterMode(Qt.MatchContains)
         self.project_combo.setCompleter(completer)
 
+        # Autocomplete for Job No from past project entries
+        job_nos = self.db.get_distinct_codes("project")
+        self._job_no_list = job_nos
+        job_completer = QCompleter(job_nos, self)
+        job_completer.setCaseSensitivity(Qt.CaseInsensitive)
+        job_completer.setFilterMode(Qt.MatchContains)
+        self.job_no_edit.setCompleter(job_completer)
+        self.job_no_edit.textChanged.connect(self._on_job_no_changed)
+
+        # Autocomplete for Ticket No from past ticket entries
+        ticket_nos = self.db.get_distinct_codes("ticket")
+        self._ticket_no_list = ticket_nos
+        ticket_completer = QCompleter(ticket_nos, self)
+        ticket_completer.setCaseSensitivity(Qt.CaseInsensitive)
+        ticket_completer.setFilterMode(Qt.MatchContains)
+        self.ticket_no_edit.setCompleter(ticket_completer)
+        self.ticket_no_edit.textChanged.connect(self._on_ticket_no_changed)
+
     def _on_project_changed(self, name: str):
         proj = self._project_map.get(name)
         if proj:
@@ -171,6 +189,32 @@ class WorkPopupDialog(QDialog):
             idx = self.bill_combo.findText(proj["billability"])
             if idx >= 0:
                 self.bill_combo.setCurrentIndex(idx)
+
+    def _on_job_no_changed(self, code: str):
+        """Auto-fill description/billability from most recent entry with this job no."""
+        if code not in self._job_no_list:
+            return
+        entry = self.db.get_latest_entry_by_code(code, "project")
+        if not entry:
+            return
+        if not self.desc_edit.toPlainText().strip():
+            self.desc_edit.setPlainText(entry["description"])
+        idx = self.bill_combo.findText(entry["billability"])
+        if idx >= 0:
+            self.bill_combo.setCurrentIndex(idx)
+
+    def _on_ticket_no_changed(self, code: str):
+        """Auto-fill description from most recent entry with this ticket no."""
+        if code not in self._ticket_no_list:
+            return
+        entry = self.db.get_latest_entry_by_code(code, "ticket")
+        if not entry:
+            return
+        if not self.desc_edit.toPlainText().strip():
+            self.desc_edit.setPlainText(entry["description"])
+        idx = self.bill_combo.findText(entry["billability"])
+        if idx >= 0:
+            self.bill_combo.setCurrentIndex(idx)
 
     # ── Save ──────────────────────────────────────────────────────────────────
 

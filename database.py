@@ -182,6 +182,28 @@ class Database:
         ).fetchone()
         return dict(row) if row else None
 
+    def get_distinct_codes(self, entry_type: str) -> list[str]:
+        """Return distinct non-empty project_codes for the given entry_type, most-used first."""
+        rows = self._conn().execute(
+            """SELECT project_code, COUNT(*) as cnt
+               FROM entries
+               WHERE entry_type=? AND project_code != '' AND is_auto_added=0
+               GROUP BY project_code
+               ORDER BY cnt DESC, project_code ASC""",
+            (entry_type,),
+        ).fetchall()
+        return [r["project_code"] for r in rows]
+
+    def get_latest_entry_by_code(self, project_code: str, entry_type: str) -> dict | None:
+        """Return the most recently created entry for a given code and type."""
+        row = self._conn().execute(
+            """SELECT * FROM entries
+               WHERE project_code=? AND entry_type=? AND is_auto_added=0
+               ORDER BY created_at DESC LIMIT 1""",
+            (project_code, entry_type),
+        ).fetchone()
+        return dict(row) if row else None
+
     def get_entry_by_project_date(self, date_str: str, project_name: str,
                                    project_code: str) -> dict | None:
         row = self._conn().execute(
