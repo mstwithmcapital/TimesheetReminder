@@ -194,6 +194,17 @@ class Database:
         ).fetchall()
         return [r["project_code"] for r in rows]
 
+    def get_distinct_task_nos(self) -> list[str]:
+        """Return distinct non-empty job_task_no values, most-used first."""
+        rows = self._conn().execute(
+            """SELECT job_task_no, COUNT(*) as cnt
+               FROM entries
+               WHERE job_task_no != '' AND is_auto_added=0
+               GROUP BY job_task_no
+               ORDER BY cnt DESC, job_task_no ASC"""
+        ).fetchall()
+        return [r["job_task_no"] for r in rows]
+
     def get_latest_entry_by_code(self, project_code: str, entry_type: str) -> dict | None:
         """Return the most recently created entry for a given code and type."""
         row = self._conn().execute(

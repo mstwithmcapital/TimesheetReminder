@@ -85,9 +85,12 @@ class WorkPopupDialog(QDialog):
         self.job_no_edit.setPlaceholderText("e.g. JOB-001")
         proj_form.addRow("Job No", self.job_no_edit)
 
-        self.job_task_edit = QLineEdit()
-        self.job_task_edit.setPlaceholderText("e.g. TASK-001")
-        proj_form.addRow("Job Task No", self.job_task_edit)
+        self.job_task_combo = QComboBox()
+        self.job_task_combo.setEditable(True)
+        self.job_task_combo.setInsertPolicy(QComboBox.NoInsert)
+        self.job_task_combo.lineEdit().setPlaceholderText("Select or type task no…")
+        self.job_task_combo.activated.connect(self._on_task_no_activated)
+        proj_form.addRow("Job Task No", self.job_task_combo)
 
         layout.addWidget(self.project_widget)
 
@@ -170,6 +173,19 @@ class WorkPopupDialog(QDialog):
         self.job_no_edit.setCompleter(job_completer)
         self.job_no_edit.textChanged.connect(self._on_job_no_changed)
 
+        # Dropdown for Job Task No from past entries
+        task_nos = self.db.get_distinct_task_nos()
+        self._task_no_list = task_nos
+        self.job_task_combo.clear()
+        self.job_task_combo.addItem("")
+        self.job_task_combo.addItems(task_nos)
+        self.job_task_combo.addItem("+ New Task No.")
+        self.job_task_combo.setCurrentIndex(0)
+        task_completer = QCompleter(task_nos, self)
+        task_completer.setCaseSensitivity(Qt.CaseInsensitive)
+        task_completer.setFilterMode(Qt.MatchContains)
+        self.job_task_combo.setCompleter(task_completer)
+
         # Autocomplete for Ticket No from past ticket entries
         ticket_nos = self.db.get_distinct_codes("ticket")
         self._ticket_no_list = ticket_nos
@@ -216,6 +232,12 @@ class WorkPopupDialog(QDialog):
         if idx >= 0:
             self.bill_combo.setCurrentIndex(idx)
 
+    def _on_task_no_activated(self, index: int):
+        """When '+ New Task No.' is selected, clear so user can type a new value."""
+        if self.job_task_combo.currentText() == "+ New Task No.":
+            self.job_task_combo.setCurrentText("")
+            self.job_task_combo.lineEdit().setFocus()
+
     # ── Save ──────────────────────────────────────────────────────────────────
 
     def _on_save(self):
@@ -232,7 +254,8 @@ class WorkPopupDialog(QDialog):
                 QMessageBox.warning(self, "Required Field", "Project name is required.")
                 return
             project_code = self.job_no_edit.text().strip()
-            job_task_no = self.job_task_edit.text().strip()
+            raw_task = self.job_task_combo.currentText().strip()
+            job_task_no = "" if raw_task == "+ New Task No." else raw_task
             entry_type = "project"
         else:
             ticket_no = self.ticket_no_edit.text().strip()
@@ -323,7 +346,7 @@ class WorkPopupDialog(QDialog):
             self.project_combo.setCurrentText(entry.get("project_name", ""))
             self.project_combo.blockSignals(False)
             self.job_no_edit.setText(entry.get("project_code", ""))
-            self.job_task_edit.setText(entry.get("job_task_no", ""))
+            self.job_task_combo.setCurrentText(entry.get("job_task_no", ""))
 
         self.desc_edit.setPlainText(entry.get("description", ""))
         idx = self.bill_combo.findText(entry.get("billability", "Billable"))
