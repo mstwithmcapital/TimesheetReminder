@@ -22,6 +22,9 @@ class WorkPopupDialog(QDialog):
     Entry types:
       Project — Project Name, Job No, Job Task No, Description, Billability, Hours
       Ticket  — Job Type (static "Support"), Ticket No, Description, Billability, Hours
+
+    Auto-fill priority: master table → most recent history entry.
+    Billability defaults to "Billable" for all entries.
     """
 
     def __init__(self, db: Database, state: AppState,
@@ -38,10 +41,14 @@ class WorkPopupDialog(QDialog):
         self.setWindowTitle("What are you working on?" if not add_mode else "Add Entry")
         self.setWindowIcon(make_app_icon())
         self.setMinimumWidth(480)
-        self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
+        self.setWindowFlags(
+            self.windowFlags()
+            | Qt.WindowStaysOnTopHint
+            | Qt.WindowMinimizeButtonHint
+        )
 
         self._build_form()
-        self._load_projects()
+        self._load_masters()
 
     def _build_form(self):
         layout = QVBoxLayout(self)
@@ -105,9 +112,12 @@ class WorkPopupDialog(QDialog):
         job_type_lbl.setStyleSheet("font-weight:bold; color:#1565c0;")
         ticket_form.addRow("Job Type", job_type_lbl)
 
-        self.ticket_no_edit = QLineEdit()
-        self.ticket_no_edit.setPlaceholderText("e.g. INC-12345")
-        ticket_form.addRow("Ticket No *", self.ticket_no_edit)
+        self.ticket_no_combo = QComboBox()
+        self.ticket_no_combo.setEditable(True)
+        self.ticket_no_combo.setInsertPolicy(QComboBox.NoInsert)
+        self.ticket_no_combo.lineEdit().setPlaceholderText("e.g. INC-12345")
+        self.ticket_no_combo.currentTextChanged.connect(self._on_ticket_no_changed)
+        ticket_form.addRow("Ticket No *", self.ticket_no_combo)
 
         self.ticket_widget.setVisible(False)
         layout.addWidget(self.ticket_widget)
@@ -143,71 +153,108 @@ class WorkPopupDialog(QDialog):
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
 
-    # ── Helpers ───────────────────────────────────────────────────────────────
+    # ── Data loading ──────────────────────────────────────────────────────────
+
+    def _load_masters(self):
+        """Populate all dropdowns from master tables + entry history."""
+        # ── Project master ────────────────────────────────────────────────────
+        projects = self.db.get_all_projects()
+        self._project_map = {p["name"]: p for p in projects}          # name → project
+        self._project_code_map = {p["code"]: p for p in projects if p["code"]}  # code → project
+
+        names = [p["name"] for p in projects]
+        self.project_combo.clear()
+        self.project_combo.addItems(names)
+        self.project_combo.setCurrentText("")
+
+        name_completer = QCompleter(names, self)
+        name_completer.setCaseSensitivity(Qt.CaseInsensitive)
+        name_completer.setFilterMode(Qt.MatchContains)
+        self.project_combo.setCompleter(name_completer)
+
+        # Job No — merge master codes + history codes (deduped, master first)
+        master_codes = [p["code"] for p in projects if p["code"]]
+        history_codes = self.db.get_distinct_codes("project")
+        all_job_nos = master_codes + [c for c in history_codes if c not in master_codes]
+        self._job_no_list = set(all_job_nos)
+        job_completer = QCompleter(all_job_nos, self)
+        job_completer.setCaseSensitivity(Qt.CaseInsensitive)
+        job_completer.setFilterMode(Qt.MatchContains)
+        self.job_no_edit.setCompleter(job_completer)
+        self.job_no_edit.textChanged.connect(self._on_job_no_changed)
+
+        # Job Task No — merge master task nos + history
+        master_tasks = list({p["job_task_no"] for p in projects if p.get("job_task_no")})
+        history_tasks = self.db.get_distinct_task_nos()
+        all_tasks = master_tasks + [t for t in history_tasks if t not in master_tasks]
+        self._task_no_list = set(all_tasks)
+        self.job_task_combo.clear()
+        self.job_task_combo.addItem("")
+        self.job_task_combo.addItems(all_tasks)
+        self.job_task_combo.addItem("+ New Task No.")
+        self.job_task_combo.setCurrentIndex(0)
+        task_completer = QCompleter(all_tasks, self)
+        task_completer.setCaseSensitivity(Qt.CaseInsensitive)
+        task_completer.setFilterMode(Qt.MatchContains)
+        self.job_task_combo.setCompleter(task_completer)
+
+        # ── Ticket master ─────────────────────────────────────────────────────
+        tickets = self.db.get_all_tickets()
+        self._ticket_master_map = {t["ticket_no"]: t for t in tickets}
+
+        master_ticket_nos = [t["ticket_no"] for t in tickets]
+        history_ticket_nos = self.db.get_distinct_codes("ticket")
+        all_ticket_nos = master_ticket_nos + [n for n in history_ticket_nos if n not in master_ticket_nos]
+        self._ticket_no_list = set(all_ticket_nos)
+        self.ticket_no_combo.clear()
+        self.ticket_no_combo.addItem("")
+        self.ticket_no_combo.addItems(all_ticket_nos)
+        self.ticket_no_combo.setCurrentIndex(0)
+        ticket_completer = QCompleter(all_ticket_nos, self)
+        ticket_completer.setCaseSensitivity(Qt.CaseInsensitive)
+        ticket_completer.setFilterMode(Qt.MatchContains)
+        self.ticket_no_combo.setCompleter(ticket_completer)
+
+    # ── Signal handlers ───────────────────────────────────────────────────────
 
     def _on_type_changed(self, project_selected: bool):
         self.project_widget.setVisible(project_selected)
         self.ticket_widget.setVisible(not project_selected)
         self.adjustSize()
 
-    def _load_projects(self):
-        projects = self.db.get_all_projects()
-        names = [p["name"] for p in projects]
-        self._project_map = {p["name"]: p for p in projects}
-
-        self.project_combo.clear()
-        self.project_combo.addItems(names)
-        self.project_combo.setCurrentText("")
-
-        completer = QCompleter(names, self)
-        completer.setCaseSensitivity(Qt.CaseInsensitive)
-        completer.setFilterMode(Qt.MatchContains)
-        self.project_combo.setCompleter(completer)
-
-        # Autocomplete for Job No from past project entries
-        job_nos = self.db.get_distinct_codes("project")
-        self._job_no_list = job_nos
-        job_completer = QCompleter(job_nos, self)
-        job_completer.setCaseSensitivity(Qt.CaseInsensitive)
-        job_completer.setFilterMode(Qt.MatchContains)
-        self.job_no_edit.setCompleter(job_completer)
-        self.job_no_edit.textChanged.connect(self._on_job_no_changed)
-
-        # Dropdown for Job Task No from past entries
-        task_nos = self.db.get_distinct_task_nos()
-        self._task_no_list = task_nos
-        self.job_task_combo.clear()
-        self.job_task_combo.addItem("")
-        self.job_task_combo.addItems(task_nos)
-        self.job_task_combo.addItem("+ New Task No.")
-        self.job_task_combo.setCurrentIndex(0)
-        task_completer = QCompleter(task_nos, self)
-        task_completer.setCaseSensitivity(Qt.CaseInsensitive)
-        task_completer.setFilterMode(Qt.MatchContains)
-        self.job_task_combo.setCompleter(task_completer)
-
-        # Autocomplete for Ticket No from past ticket entries
-        ticket_nos = self.db.get_distinct_codes("ticket")
-        self._ticket_no_list = ticket_nos
-        ticket_completer = QCompleter(ticket_nos, self)
-        ticket_completer.setCaseSensitivity(Qt.CaseInsensitive)
-        ticket_completer.setFilterMode(Qt.MatchContains)
-        self.ticket_no_edit.setCompleter(ticket_completer)
-        self.ticket_no_edit.textChanged.connect(self._on_ticket_no_changed)
-
     def _on_project_changed(self, name: str):
+        """Selecting a project name auto-fills all project fields from master."""
         proj = self._project_map.get(name)
+        if not proj:
+            return
+        if proj["code"]:
+            self.job_no_edit.blockSignals(True)
+            self.job_no_edit.setText(proj["code"])
+            self.job_no_edit.blockSignals(False)
+        if proj.get("job_task_no"):
+            self.job_task_combo.setCurrentText(proj["job_task_no"])
+        if proj["default_description"]:
+            self.desc_edit.setPlainText(proj["default_description"])
+        idx = self.bill_combo.findText(proj["billability"])
+        if idx >= 0:
+            self.bill_combo.setCurrentIndex(idx)
+
+    def _on_job_no_changed(self, code: str):
+        """Selecting a known job no auto-fills fields — master table first, then history."""
+        if not code:
+            return
+        # 1. Try project master by code
+        proj = self._project_code_map.get(code)
         if proj:
-            if proj["code"]:
-                self.job_no_edit.setText(proj["code"])
-            if proj["default_description"]:
+            if proj.get("job_task_no") and not self.job_task_combo.currentText().strip():
+                self.job_task_combo.setCurrentText(proj["job_task_no"])
+            if proj["default_description"] and not self.desc_edit.toPlainText().strip():
                 self.desc_edit.setPlainText(proj["default_description"])
             idx = self.bill_combo.findText(proj["billability"])
             if idx >= 0:
                 self.bill_combo.setCurrentIndex(idx)
-
-    def _on_job_no_changed(self, code: str):
-        """Auto-fill description/billability from most recent entry with this job no."""
+            return
+        # 2. Fall back to most recent entry with this code
         if code not in self._job_no_list:
             return
         entry = self.db.get_latest_entry_by_code(code, "project")
@@ -220,7 +267,19 @@ class WorkPopupDialog(QDialog):
             self.bill_combo.setCurrentIndex(idx)
 
     def _on_ticket_no_changed(self, code: str):
-        """Auto-fill description from most recent entry with this ticket no."""
+        """Selecting a known ticket no auto-fills fields — master table first, then history."""
+        if not code:
+            return
+        # 1. Try ticket master
+        tkt = self._ticket_master_map.get(code)
+        if tkt:
+            if tkt["description"] and not self.desc_edit.toPlainText().strip():
+                self.desc_edit.setPlainText(tkt["description"])
+            idx = self.bill_combo.findText(tkt["billability"])
+            if idx >= 0:
+                self.bill_combo.setCurrentIndex(idx)
+            return
+        # 2. Fall back to most recent entry with this ticket no
         if code not in self._ticket_no_list:
             return
         entry = self.db.get_latest_entry_by_code(code, "ticket")
@@ -258,7 +317,7 @@ class WorkPopupDialog(QDialog):
             job_task_no = "" if raw_task == "+ New Task No." else raw_task
             entry_type = "project"
         else:
-            ticket_no = self.ticket_no_edit.text().strip()
+            ticket_no = self.ticket_no_combo.currentText().strip()
             if not ticket_no:
                 QMessageBox.warning(self, "Required Field", "Ticket number is required.")
                 return
@@ -312,7 +371,6 @@ class WorkPopupDialog(QDialog):
                         self.state.record_popup_saved()
                     self.accept()
                     return
-                # No → fall through and create a second entry
 
             self.db.add_entry(
                 self.target_date, project_name, project_code, description,
@@ -322,7 +380,8 @@ class WorkPopupDialog(QDialog):
 
         # Update project master list only for project-type entries
         if is_project:
-            self.db.upsert_project(project_name, project_code, description, billability)
+            self.db.upsert_project(project_name, project_code, job_task_no,
+                                   description, billability)
 
         if not self.add_mode and self._entry_id is None:
             self.state.record_popup_saved()
@@ -339,7 +398,7 @@ class WorkPopupDialog(QDialog):
         entry_type = entry.get("entry_type", "project")
         if entry_type == "ticket":
             self.radio_ticket.setChecked(True)
-            self.ticket_no_edit.setText(entry.get("project_code", ""))
+            self.ticket_no_combo.setCurrentText(entry.get("project_code", ""))
         else:
             self.radio_project.setChecked(True)
             self.project_combo.blockSignals(True)

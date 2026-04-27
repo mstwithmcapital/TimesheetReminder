@@ -89,9 +89,15 @@ class MainWindow(QMainWindow):
         settings_action.triggered.connect(self._open_settings)
         toolbar.addAction(settings_action)
 
-        projects_action = QAction("Manage Projects", self)
+        projects_action = QAction("Manage Projects & Tickets", self)
         projects_action.triggered.connect(self._open_project_manager)
         toolbar.addAction(projects_action)
+
+        toolbar.addSeparator()
+
+        minimize_action = QAction("Minimize", self)
+        minimize_action.triggered.connect(self.showMinimized)
+        toolbar.addAction(minimize_action)
 
         # ── Central splitter ──────────────────────────────────────────────────
         self.splitter = QSplitter(Qt.Horizontal)
@@ -124,6 +130,9 @@ class MainWindow(QMainWindow):
         open_action.triggered.connect(self._show_window)
         log_action = menu.addAction("Log Work Now")
         log_action.triggered.connect(self.open_work_popup)
+        menu.addSeparator()
+        minimize_tray_action = menu.addAction("Minimize to Tray")
+        minimize_tray_action.triggered.connect(self.hide)
         menu.addSeparator()
         quit_action = menu.addAction("Quit")
         quit_action.triggered.connect(QApplication.instance().quit)

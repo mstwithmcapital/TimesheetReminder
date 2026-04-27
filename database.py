@@ -34,6 +34,13 @@ class Database:
                 billability         TEXT NOT NULL DEFAULT 'Billable'
             );
 
+            CREATE TABLE IF NOT EXISTS tickets (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                ticket_no   TEXT NOT NULL UNIQUE,
+                description TEXT NOT NULL DEFAULT '',
+                billability TEXT NOT NULL DEFAULT 'Billable'
+            );
+
             CREATE TABLE IF NOT EXISTS entries (
                 id            INTEGER PRIMARY KEY AUTOINCREMENT,
                 date          TEXT NOT NULL,
@@ -61,45 +68,98 @@ class Database:
             except sqlite3.OperationalError:
                 pass  # column already exists
 
+        # projects table migrations
+        try:
+            c.execute("ALTER TABLE projects ADD COLUMN job_task_no TEXT NOT NULL DEFAULT ''")
+            c.commit()
+        except sqlite3.OperationalError:
+            pass
+
     # ── Projects ──────────────────────────────────────────────────────────────
 
-    def upsert_project(self, name: str, code: str,
+    def upsert_project(self, name: str, code: str, job_task_no: str,
                        default_description: str, billability: str):
         self._conn().execute(
-            """INSERT INTO projects (name, code, default_description, billability)
-               VALUES (?, ?, ?, ?)
+            """INSERT INTO projects (name, code, job_task_no, default_description, billability)
+               VALUES (?, ?, ?, ?, ?)
                ON CONFLICT(name) DO UPDATE SET
                    code=excluded.code,
+                   job_task_no=excluded.job_task_no,
                    default_description=excluded.default_description,
                    billability=excluded.billability""",
-            (name, code, default_description, billability),
+            (name, code, job_task_no, default_description, billability),
         )
         self._conn().commit()
 
     def get_all_projects(self) -> list[dict]:
         rows = self._conn().execute(
-            "SELECT id, name, code, default_description, billability FROM projects ORDER BY name"
+            "SELECT id, name, code, job_task_no, default_description, billability FROM projects ORDER BY name"
         ).fetchall()
         return [dict(r) for r in rows]
 
     def get_project_by_name(self, name: str) -> dict | None:
         row = self._conn().execute(
-            "SELECT id, name, code, default_description, billability FROM projects WHERE name=?",
+            "SELECT id, name, code, job_task_no, default_description, billability FROM projects WHERE name=?",
             (name,),
         ).fetchone()
         return dict(row) if row else None
 
-    def update_project(self, project_id: int, name: str, code: str,
+    def get_project_by_code(self, code: str) -> dict | None:
+        """Return first matching project for a given job no / code."""
+        row = self._conn().execute(
+            "SELECT id, name, code, job_task_no, default_description, billability FROM projects WHERE code=?",
+            (code,),
+        ).fetchone()
+        return dict(row) if row else None
+
+    def update_project(self, project_id: int, name: str, code: str, job_task_no: str,
                        default_description: str, billability: str):
         self._conn().execute(
-            """UPDATE projects SET name=?, code=?, default_description=?, billability=?
+            """UPDATE projects SET name=?, code=?, job_task_no=?, default_description=?, billability=?
                WHERE id=?""",
-            (name, code, default_description, billability, project_id),
+            (name, code, job_task_no, default_description, billability, project_id),
         )
         self._conn().commit()
 
     def delete_project(self, project_id: int):
         self._conn().execute("DELETE FROM projects WHERE id=?", (project_id,))
+        self._conn().commit()
+
+    # ── Tickets ───────────────────────────────────────────────────────────────
+
+    def upsert_ticket(self, ticket_no: str, description: str, billability: str):
+        self._conn().execute(
+            """INSERT INTO tickets (ticket_no, description, billability)
+               VALUES (?, ?, ?)
+               ON CONFLICT(ticket_no) DO UPDATE SET
+                   description=excluded.description,
+                   billability=excluded.billability""",
+            (ticket_no, description, billability),
+        )
+        self._conn().commit()
+
+    def get_all_tickets(self) -> list[dict]:
+        rows = self._conn().execute(
+            "SELECT id, ticket_no, description, billability FROM tickets ORDER BY ticket_no"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_ticket_by_no(self, ticket_no: str) -> dict | None:
+        row = self._conn().execute(
+            "SELECT id, ticket_no, description, billability FROM tickets WHERE ticket_no=?",
+            (ticket_no,),
+        ).fetchone()
+        return dict(row) if row else None
+
+    def update_ticket(self, ticket_id: int, ticket_no: str, description: str, billability: str):
+        self._conn().execute(
+            "UPDATE tickets SET ticket_no=?, description=?, billability=? WHERE id=?",
+            (ticket_no, description, billability, ticket_id),
+        )
+        self._conn().commit()
+
+    def delete_ticket(self, ticket_id: int):
+        self._conn().execute("DELETE FROM tickets WHERE id=?", (ticket_id,))
         self._conn().commit()
 
     # ── Entries ───────────────────────────────────────────────────────────────
@@ -158,7 +218,6 @@ class Database:
 
     def get_daily_totals_for_month(self, year: int, month: int) -> dict[str, float]:
         start = date(year, month, 1).isoformat()
-        # Last day of month
         if month == 12:
             end = date(year + 1, 1, 1) - timedelta(days=1)
         else:
@@ -247,7 +306,6 @@ class Database:
 
 
 def _monday_of_iso_week(iso_year: int, iso_week: int) -> date:
-    # ISO week Monday: Jan 4 is always in week 1
     jan4 = date(iso_year, 1, 4)
     week1_monday = jan4 - timedelta(days=jan4.weekday())
     return week1_monday + timedelta(weeks=iso_week - 1)

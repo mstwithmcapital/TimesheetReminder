@@ -23,12 +23,17 @@ Table **entries**: `id, date, project_name, project_code, description, billabili
 - `job_task_no` = Job Task No (project entries only)
 - Schema migrations are idempotent ALTER TABLE calls run on every start
 
-Table **projects**: `id, name, code, default_description, billability` — master project list, auto-upserted on each project entry save
+Table **projects**: `id, name, code, job_task_no, default_description, billability` — master project list, auto-upserted on each project entry save
+
+Table **tickets**: `id, ticket_no, description, billability` — master ticket list, managed via Manage Projects & Tickets dialog
 
 Key DB methods:
 - `get_distinct_codes(entry_type)` — distinct `project_code` values, most-used first
 - `get_distinct_task_nos()` — distinct `job_task_no` values, most-used first
-- `get_latest_entry_by_code(code, entry_type)` — for auto-fill
+- `get_latest_entry_by_code(code, entry_type)` — for auto-fill fallback
+- `get_project_by_code(code)` — master lookup by job no
+- `get_ticket_by_no(ticket_no)` — master lookup by ticket no
+- `upsert_ticket / update_ticket / delete_ticket` — ticket master CRUD
 
 ## UI components (`ui/`)
 | File | Purpose |
@@ -37,7 +42,7 @@ Key DB methods:
 | `calendar_widget.py` | Monthly calendar, colours days by hours logged |
 | `day_detail_panel.py` | Table of entries for selected date; inline bill/hours edit |
 | `work_popup.py` | Work-logging dialog (popup + manual add/edit) |
-| `project_manager_dialog.py` | CRUD for the projects master table |
+| `project_manager_dialog.py` | Tabbed CRUD for projects master (name/job no/task no/desc/bill) and tickets master (ticket no/desc/bill) |
 | `settings_dialog.py` | Reminder interval, target hours, notification style |
 | `end_of_day_dialog.py` | EOD summary / export prompt |
 | `weekly_summary_dialog.py` | Weekly hours breakdown |
@@ -62,3 +67,4 @@ Ticket entry: Job Type = "Support" (static) → Ticket No (QLineEdit + autocompl
 4. Auto-populate Job No and Ticket No dropdowns from history
 5. Job Task No field added to entries schema (migration)
 6. Job Task No converted to editable QComboBox with "+ New Task No." option and history dropdown
+7. Tickets master table added; Manage Projects & Tickets dialog now has Projects + Tickets tabs; auto-fill priority: master table → history entry; Ticket No converted to editable QComboBox; projects master extended with job_task_no column
