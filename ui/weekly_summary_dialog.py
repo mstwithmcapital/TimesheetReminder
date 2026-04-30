@@ -50,11 +50,12 @@ class WeeklySummaryDialog(QDialog):
         header.setAlignment(Qt.AlignCenter)
         layout.addWidget(header)
 
-        remind_text = (
-            "Reminder: Submit your weekly timesheet!"
-            if self.mode == "weekly"
-            else "Reminder: Submit your first-Saturday timesheet!"
-        )
+        if self.mode == "weekly":
+            remind_text = "Reminder: Submit your weekly timesheet!"
+        elif self.mode == "lwd":
+            remind_text = "Reminder: Today is the last working day of the month — submit your monthly timesheet!"
+        else:
+            remind_text = "Reminder: Submit your first-Saturday timesheet!"
         remind_label = QLabel(remind_text)
         remind_label.setStyleSheet(
             "font-size:12px; padding:6px; background:#fff3e0; color:#e65100; border-radius:4px;"
@@ -127,6 +128,8 @@ class WeeklySummaryDialog(QDialog):
     def _mark_submitted(self):
         if self.mode == "weekly":
             self.state.mark_weekly_submitted()
+        elif self.mode == "lwd":
+            self.state.mark_lwd_submitted()
         else:
             self.state.mark_saturday_submitted()
         self.accept()

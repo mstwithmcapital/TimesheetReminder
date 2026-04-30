@@ -301,6 +301,7 @@ class _ProjectEditDialog(QDialog):
 
         self.desc_edit = QLineEdit()
         self.desc_edit.setPlaceholderText("Default description (optional)")
+        self.desc_edit.setMaxLength(200)
         form.addRow("Default Description", self.desc_edit)
 
         self.bill_combo = QComboBox()
@@ -366,6 +367,7 @@ class _TicketEditDialog(QDialog):
 
         self.desc_edit = QLineEdit()
         self.desc_edit.setPlaceholderText("Default description (optional)")
+        self.desc_edit.setMaxLength(200)
         form.addRow("Default Description", self.desc_edit)
 
         self.bill_combo = QComboBox()

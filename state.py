@@ -13,6 +13,7 @@ class AppState:
         self.first_launch_date: str | None = None
         self.weekly_submitted_for: str | None = None
         self.saturday_submitted_for: str | None = None
+        self.lwd_submitted_for: str | None = None
         self.eod_shown_for: str | None = None  # 'YYYY-MM-DD' — guard against repeat EOD dialog
 
     def load(self):
@@ -27,6 +28,7 @@ class AppState:
             self.first_launch_date = data.get("first_launch_date")
             self.weekly_submitted_for = data.get("weekly_submitted_for")
             self.saturday_submitted_for = data.get("saturday_submitted_for")
+            self.lwd_submitted_for = data.get("lwd_submitted_for")
             self.eod_shown_for = data.get("eod_shown_for")
         except Exception:
             pass
@@ -39,6 +41,7 @@ class AppState:
             "first_launch_date": self.first_launch_date,
             "weekly_submitted_for": self.weekly_submitted_for,
             "saturday_submitted_for": self.saturday_submitted_for,
+            "lwd_submitted_for": self.lwd_submitted_for,
             "eod_shown_for": self.eod_shown_for,
         }
         tmp = self.STATE_FILE.parent / "_state_tmp.json"
@@ -93,11 +96,18 @@ class AppState:
         self.saturday_submitted_for = _current_iso_month()
         self.save()
 
+    def mark_lwd_submitted(self):
+        self.lwd_submitted_for = _current_iso_month()
+        self.save()
+
     def is_weekly_submitted_this_week(self) -> bool:
         return self.weekly_submitted_for == _current_iso_week()
 
     def is_saturday_submitted_this_month(self) -> bool:
         return self.saturday_submitted_for == _current_iso_month()
+
+    def is_lwd_submitted_this_month(self) -> bool:
+        return self.lwd_submitted_for == _current_iso_month()
 
 
 def _current_iso_week() -> str:

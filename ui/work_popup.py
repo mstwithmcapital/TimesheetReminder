@@ -131,7 +131,13 @@ class WorkPopupDialog(QDialog):
         self.desc_edit.setPlaceholderText("Description of work done…")
         self.desc_edit.setMinimumHeight(70)
         self.desc_edit.setMaximumHeight(120)
+        self.desc_edit.textChanged.connect(self._on_desc_changed)
         shared_form.addRow("Description *", self.desc_edit)
+
+        self.desc_char_label = QLabel("0/200")
+        self.desc_char_label.setStyleSheet("color:#888; font-size:11px;")
+        self.desc_char_label.setAlignment(Qt.AlignRight)
+        shared_form.addRow("", self.desc_char_label)
 
         self.bill_combo = QComboBox()
         self.bill_combo.addItems(["Billable", "Non-Billable"])
@@ -296,6 +302,19 @@ class WorkPopupDialog(QDialog):
         if self.job_task_combo.currentText() == "+ New Task No.":
             self.job_task_combo.setCurrentText("")
             self.job_task_combo.lineEdit().setFocus()
+
+    def _on_desc_changed(self):
+        text = self.desc_edit.toPlainText()
+        if len(text) > 200:
+            cursor = self.desc_edit.textCursor()
+            pos = cursor.position()
+            self.desc_edit.blockSignals(True)
+            self.desc_edit.setPlainText(text[:200])
+            self.desc_edit.blockSignals(False)
+            cursor.setPosition(min(pos, 200))
+            self.desc_edit.setTextCursor(cursor)
+            text = text[:200]
+        self.desc_char_label.setText(f"{len(text)}/200")
 
     # ── Save ──────────────────────────────────────────────────────────────────
 

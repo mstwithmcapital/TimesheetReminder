@@ -10,6 +10,7 @@ from state import AppState
 
 WEEKLY_REMINDER_H = 16    # Friday 4 PM — not user-configurable yet
 SATURDAY_REMINDER_H = 10  # first Saturday 10 AM — not user-configurable yet
+LWD_REMINDER_H = 10       # last working day of month 10 AM — not user-configurable yet
 
 
 def _is_workday(d: date) -> bool:
@@ -20,6 +21,16 @@ def _get_first_saturday(year: int, month: int) -> date:
     d = date(year, month, 1)
     days = (5 - d.weekday()) % 7
     return d + timedelta(days=days)
+
+
+def _get_last_workday_of_month(year: int, month: int) -> date:
+    if month == 12:
+        last_day = date(year + 1, 1, 1) - timedelta(days=1)
+    else:
+        last_day = date(year, month + 1, 1) - timedelta(days=1)
+    while last_day.weekday() >= 5:  # roll back past Saturday/Sunday
+        last_day -= timedelta(days=1)
+    return last_day
 
 
 class SchedulerBridge(QObject):
@@ -39,6 +50,7 @@ class SchedulerThread(threading.Thread):
         self.config = config
         self.db = db
         self._last_hourly_check: datetime | None = None
+        self._last_lwd_check: datetime | None = None
 
     def run(self) -> None:
         # Check every 60 seconds; individual methods guard their own timing.
@@ -47,6 +59,7 @@ class SchedulerThread(threading.Thread):
         schedule.every(1).minutes.do(self._check_eod)
         schedule.every(1).minutes.do(self._check_weekly)
         schedule.every(1).minutes.do(self._check_saturday)
+        schedule.every(1).minutes.do(self._check_lwd)
 
         while True:
             schedule.run_pending()
@@ -175,3 +188,20 @@ class SchedulerThread(threading.Thread):
         if self.state.is_saturday_submitted_this_month():
             return
         self.bridge.show_weekly_summary.emit("saturday")
+
+    def _check_lwd(self) -> None:
+        now = datetime.now()
+        today = now.date()
+        lwd = _get_last_workday_of_month(today.year, today.month)
+        if today != lwd:
+            return
+        if now.hour < LWD_REMINDER_H:
+            return
+        if self.state.is_lwd_submitted_this_month():
+            return
+        # Throttle to every 30 min
+        if self._last_lwd_check is not None:
+            if (now - self._last_lwd_check).total_seconds() < 1800:
+                return
+        self._last_lwd_check = now
+        self.bridge.show_weekly_summary.emit("lwd")
