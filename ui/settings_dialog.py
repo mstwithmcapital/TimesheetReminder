@@ -1,10 +1,24 @@
-from PyQt5.QtCore import QTime
+from PyQt5.QtCore import QTime, Qt
 from PyQt5.QtWidgets import (
-    QDialog, QDialogButtonBox, QDoubleSpinBox, QSpinBox,
-    QFormLayout, QGroupBox, QTimeEdit, QVBoxLayout,
+    QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox, QSpinBox,
+    QFormLayout, QGroupBox, QHBoxLayout, QHeaderView, QLabel,
+    QLineEdit, QMessageBox, QPushButton, QTableWidget, QTableWidgetItem,
+    QTimeEdit, QVBoxLayout,
 )
 
 from config import AppConfig
+
+_BTN_BLUE   = "background:#1565c0; color:white; padding:5px 12px; border-radius:4px;"
+_BTN_ORANGE = "background:#f57c00; color:white; padding:5px 12px; border-radius:4px;"
+_BTN_RED    = "background:#c62828; color:white; padding:5px 12px; border-radius:4px;"
+
+# Column indices for the daily tasks table
+_COL_PROJECT = 0
+_COL_JOB_NO  = 1
+_COL_TASK_NO = 2
+_COL_DESC    = 3
+_COL_BILL    = 4
+_COL_HOURS   = 5
 
 
 class SettingsDialog(QDialog):
@@ -19,7 +33,7 @@ class SettingsDialog(QDialog):
         super().__init__(parent)
         self.config = config
         self.setWindowTitle("Settings")
-        self.setMinimumWidth(380)
+        self.setMinimumWidth(680)
         self._build_ui()
 
     # ── UI construction ───────────────────────────────────────────────────────
@@ -109,11 +123,122 @@ class SettingsDialog(QDialog):
 
         layout.addWidget(pre_eod_group)
 
+        # ── Default daily tasks ───────────────────────────────────────────────
+        daily_group = QGroupBox("Default Daily Tasks (auto-added each workday)")
+        daily_layout = QVBoxLayout(daily_group)
+        daily_layout.setSpacing(6)
+
+        hint = QLabel("These entries are automatically added at the start of each workday.")
+        hint.setStyleSheet("color:#555; font-size:11px;")
+        daily_layout.addWidget(hint)
+
+        self.tasks_table = QTableWidget(0, 6)
+        self.tasks_table.setHorizontalHeaderLabels(
+            ["Project Name", "Job No.", "Job Task No.", "Description", "Billability", "Hours"]
+        )
+        self.tasks_table.horizontalHeader().setSectionResizeMode(_COL_PROJECT, QHeaderView.ResizeToContents)
+        self.tasks_table.horizontalHeader().setSectionResizeMode(_COL_JOB_NO,  QHeaderView.ResizeToContents)
+        self.tasks_table.horizontalHeader().setSectionResizeMode(_COL_TASK_NO, QHeaderView.ResizeToContents)
+        self.tasks_table.horizontalHeader().setSectionResizeMode(_COL_DESC,    QHeaderView.Stretch)
+        self.tasks_table.horizontalHeader().setSectionResizeMode(_COL_BILL,    QHeaderView.ResizeToContents)
+        self.tasks_table.horizontalHeader().setSectionResizeMode(_COL_HOURS,   QHeaderView.ResizeToContents)
+        self.tasks_table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.tasks_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.tasks_table.setAlternatingRowColors(True)
+        self.tasks_table.setMinimumHeight(120)
+        daily_layout.addWidget(self.tasks_table)
+
+        btn_row = QHBoxLayout()
+        add_btn = QPushButton("+ Add Task")
+        add_btn.setStyleSheet(_BTN_BLUE)
+        add_btn.clicked.connect(self._add_task)
+
+        edit_btn = QPushButton("Edit Selected")
+        edit_btn.setStyleSheet(_BTN_ORANGE)
+        edit_btn.clicked.connect(self._edit_task)
+
+        del_btn = QPushButton("Delete Selected")
+        del_btn.setStyleSheet(_BTN_RED)
+        del_btn.clicked.connect(self._delete_task)
+
+        btn_row.addWidget(add_btn)
+        btn_row.addWidget(edit_btn)
+        btn_row.addWidget(del_btn)
+        btn_row.addStretch()
+        daily_layout.addLayout(btn_row)
+
+        layout.addWidget(daily_group)
+
         # ── Buttons ───────────────────────────────────────────────────────────
         buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
         buttons.accepted.connect(self._save)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
+
+        self._load_tasks_table()
+
+    # ── Daily tasks table ─────────────────────────────────────────────────────
+
+    def _load_tasks_table(self):
+        self.tasks_table.setRowCount(0)
+        for task in self.config.daily_tasks:
+            self._append_task_row(task)
+
+    def _append_task_row(self, task: dict):
+        row = self.tasks_table.rowCount()
+        self.tasks_table.insertRow(row)
+        self.tasks_table.setItem(row, _COL_PROJECT, QTableWidgetItem(task.get("project_name", "")))
+        self.tasks_table.setItem(row, _COL_JOB_NO,  QTableWidgetItem(task.get("job_no", "")))
+        self.tasks_table.setItem(row, _COL_TASK_NO, QTableWidgetItem(task.get("job_task_no", "")))
+        self.tasks_table.setItem(row, _COL_DESC,    QTableWidgetItem(task.get("description", "")))
+        self.tasks_table.setItem(row, _COL_BILL,    QTableWidgetItem(task.get("billability", "Non-Billable")))
+        self.tasks_table.setItem(row, _COL_HOURS,   QTableWidgetItem(str(task.get("hours", 0.5))))
+
+    def _row_to_task(self, row: int) -> dict:
+        return {
+            "project_name": self.tasks_table.item(row, _COL_PROJECT).text(),
+            "job_no":       self.tasks_table.item(row, _COL_JOB_NO).text(),
+            "job_task_no":  self.tasks_table.item(row, _COL_TASK_NO).text(),
+            "description":  self.tasks_table.item(row, _COL_DESC).text(),
+            "billability":  self.tasks_table.item(row, _COL_BILL).text(),
+            "hours":        float(self.tasks_table.item(row, _COL_HOURS).text()),
+        }
+
+    def _add_task(self):
+        dlg = _DailyTaskEditDialog(parent=self)
+        if dlg.exec_() == QDialog.Accepted:
+            self._append_task_row(dlg.get_data())
+
+    def _edit_task(self):
+        rows = self.tasks_table.selectionModel().selectedRows()
+        if not rows:
+            QMessageBox.information(self, "No Selection", "Select a task to edit.")
+            return
+        row = rows[0].row()
+        dlg = _DailyTaskEditDialog(task=self._row_to_task(row), parent=self)
+        if dlg.exec_() == QDialog.Accepted:
+            data = dlg.get_data()
+            self.tasks_table.item(row, _COL_PROJECT).setText(data["project_name"])
+            self.tasks_table.item(row, _COL_JOB_NO).setText(data["job_no"])
+            self.tasks_table.item(row, _COL_TASK_NO).setText(data["job_task_no"])
+            self.tasks_table.item(row, _COL_DESC).setText(data["description"])
+            self.tasks_table.item(row, _COL_BILL).setText(data["billability"])
+            self.tasks_table.item(row, _COL_HOURS).setText(str(data["hours"]))
+
+    def _delete_task(self):
+        rows = self.tasks_table.selectionModel().selectedRows()
+        if not rows:
+            QMessageBox.information(self, "No Selection", "Select a task to delete.")
+            return
+        row = rows[0].row()
+        name = self.tasks_table.item(row, _COL_PROJECT).text()
+        ans = QMessageBox.question(
+            self, "Delete Task",
+            f'Remove "{name}" from the daily auto-add list?',
+            QMessageBox.Yes | QMessageBox.No,
+        )
+        if ans == QMessageBox.Yes:
+            self.tasks_table.removeRow(row)
 
     # ── Save ──────────────────────────────────────────────────────────────────
 
@@ -137,5 +262,92 @@ class SettingsDialog(QDialog):
         self.config.pre_eod_warning_minutes = self.pre_eod_warning_spin.value()
         self.config.pre_eod_interval_minutes = self.pre_eod_interval_spin.value()
 
+        self.config.daily_tasks = [
+            self._row_to_task(r) for r in range(self.tasks_table.rowCount())
+        ]
+
         self.config.save()
         self.accept()
+
+
+# ── Daily task add/edit dialog ────────────────────────────────────────────────
+
+class _DailyTaskEditDialog(QDialog):
+    def __init__(self, task: dict = None, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Add Daily Task" if task is None else "Edit Daily Task")
+        self.setMinimumWidth(420)
+        self._build_ui()
+        if task:
+            self._prefill(task)
+
+    def _build_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setSpacing(10)
+        form = QFormLayout()
+        form.setLabelAlignment(Qt.AlignRight)
+        form.setSpacing(8)
+
+        self.project_edit = QLineEdit()
+        self.project_edit.setPlaceholderText("e.g. Internal Meeting")
+        self.project_edit.setMaxLength(100)
+        form.addRow("Project Name *", self.project_edit)
+
+        self.job_no_edit = QLineEdit()
+        self.job_no_edit.setPlaceholderText("e.g. Intech")
+        self.job_no_edit.setMaxLength(50)
+        form.addRow("Job No.", self.job_no_edit)
+
+        self.task_no_edit = QLineEdit()
+        self.task_no_edit.setPlaceholderText("e.g. 1501")
+        self.task_no_edit.setMaxLength(50)
+        form.addRow("Job Task No.", self.task_no_edit)
+
+        self.desc_edit = QLineEdit()
+        self.desc_edit.setPlaceholderText("e.g. Daily standup / internal meeting")
+        self.desc_edit.setMaxLength(200)
+        form.addRow("Description", self.desc_edit)
+
+        self.bill_combo = QComboBox()
+        self.bill_combo.addItems(["Billable", "Non-Billable"])
+        form.addRow("Billability", self.bill_combo)
+
+        self.hours_spin = QDoubleSpinBox()
+        self.hours_spin.setRange(0.25, 8.0)
+        self.hours_spin.setSingleStep(0.25)
+        self.hours_spin.setDecimals(2)
+        self.hours_spin.setSuffix("  hours")
+        self.hours_spin.setValue(0.5)
+        form.addRow("Hours", self.hours_spin)
+
+        layout.addLayout(form)
+        buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(self._on_save)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def _prefill(self, task: dict):
+        self.project_edit.setText(task.get("project_name", ""))
+        self.job_no_edit.setText(task.get("job_no", ""))
+        self.task_no_edit.setText(task.get("job_task_no", ""))
+        self.desc_edit.setText(task.get("description", ""))
+        idx = self.bill_combo.findText(task.get("billability", "Non-Billable"))
+        if idx >= 0:
+            self.bill_combo.setCurrentIndex(idx)
+        self.hours_spin.setValue(float(task.get("hours", 0.5)))
+
+    def _on_save(self):
+        if not self.project_edit.text().strip():
+            QMessageBox.warning(self, "Required", "Project name is required.")
+            return
+        self.accept()
+
+    def get_data(self) -> dict:
+        return {
+            "project_name": self.project_edit.text().strip(),
+            "job_no":       self.job_no_edit.text().strip(),
+            "job_task_no":  self.task_no_edit.text().strip(),
+            "description":  self.desc_edit.text().strip(),
+            "billability":  self.bill_combo.currentText(),
+            "hours":        self.hours_spin.value(),
+        }

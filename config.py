@@ -4,6 +4,17 @@ from pathlib import Path
 
 _CONFIG_FILE = Path(os.getenv("APPDATA", "")) / "TimesheetReminder" / "config.json"
 
+_DEFAULT_DAILY_TASKS = [
+    {
+        "project_name": "Internal Meeting",
+        "job_no": "Intech",
+        "job_task_no": "1501",
+        "description": "Daily standup / internal meeting",
+        "billability": "Non-Billable",
+        "hours": 0.5,
+    }
+]
+
 _DEFAULTS: dict = {
     "reminder_interval_hours": 1.0,   # hours between work-popup reminders
     "work_start_hour": 11,            # 11:00 AM — earliest popup
@@ -15,6 +26,7 @@ _DEFAULTS: dict = {
     "eod_reminder_minute": 25,
     "pre_eod_warning_minutes": 60,    # start frequent reminders this many minutes before work_end
     "pre_eod_interval_minutes": 10,   # reminder interval during pre-EOD window
+    "daily_tasks": _DEFAULT_DAILY_TASKS,
 }
 
 
@@ -39,6 +51,7 @@ class AppConfig:
         self.eod_reminder_minute: int = _DEFAULTS["eod_reminder_minute"]
         self.pre_eod_warning_minutes: int = _DEFAULTS["pre_eod_warning_minutes"]
         self.pre_eod_interval_minutes: int = _DEFAULTS["pre_eod_interval_minutes"]
+        self.daily_tasks: list[dict] = [dict(t) for t in _DEFAULT_DAILY_TASKS]
 
     # ── Persistence ───────────────────────────────────────────────────────────
 
@@ -67,6 +80,20 @@ class AppConfig:
             self.pre_eod_interval_minutes = int(
                 data.get("pre_eod_interval_minutes", _DEFAULTS["pre_eod_interval_minutes"])
             )
+
+            # New list format
+            if "daily_tasks" in data and isinstance(data["daily_tasks"], list):
+                self.daily_tasks = data["daily_tasks"]
+            elif "daily_task_project_name" in data:
+                # Migrate old single-task fields to list format
+                self.daily_tasks = [{
+                    "project_name": str(data.get("daily_task_project_name", _DEFAULT_DAILY_TASKS[0]["project_name"])),
+                    "job_no":       str(data.get("daily_task_job_no",       _DEFAULT_DAILY_TASKS[0]["job_no"])),
+                    "job_task_no":  str(data.get("daily_task_job_task_no",  _DEFAULT_DAILY_TASKS[0]["job_task_no"])),
+                    "description":  str(data.get("daily_task_description",  _DEFAULT_DAILY_TASKS[0]["description"])),
+                    "billability":  str(data.get("daily_task_billability",  _DEFAULT_DAILY_TASKS[0]["billability"])),
+                    "hours":       float(data.get("daily_task_hours",       _DEFAULT_DAILY_TASKS[0]["hours"])),
+                }]
         except Exception:
             pass  # silently keep defaults if file is malformed
 
@@ -83,6 +110,7 @@ class AppConfig:
             "eod_reminder_minute": self.eod_reminder_minute,
             "pre_eod_warning_minutes": self.pre_eod_warning_minutes,
             "pre_eod_interval_minutes": self.pre_eod_interval_minutes,
+            "daily_tasks": self.daily_tasks,
         }
         tmp = self.CONFIG_FILE.parent / "_config_tmp.json"
         tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")

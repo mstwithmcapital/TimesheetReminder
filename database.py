@@ -291,6 +291,13 @@ class Database:
         ).fetchone()
         return row is not None
 
+    def has_auto_entry_for(self, date_str: str, project_name: str, project_code: str) -> bool:
+        row = self._conn().execute(
+            "SELECT 1 FROM entries WHERE date=? AND project_name=? AND project_code=? AND is_auto_added=1 LIMIT 1",
+            (date_str, project_name, project_code),
+        ).fetchone()
+        return row is not None
+
     def get_entries_grouped_by_project(self, date_from: str, date_to: str) -> list[dict]:
         rows = self._conn().execute(
             """SELECT project_name, project_code, billability,

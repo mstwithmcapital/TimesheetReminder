@@ -82,19 +82,26 @@ class SchedulerThread(threading.Thread):
         if now.hour < self.config.work_start_hour:
             return
 
-        if self.db.has_auto_entry_today(today_str):
-            return
+        added_any = False
+        for task in self.config.daily_tasks:
+            project_name = task.get("project_name", "")
+            job_no = task.get("job_no", "")
+            if self.db.has_auto_entry_for(today_str, project_name, job_no):
+                continue
+            self.db.add_entry(
+                today_str,
+                project_name,
+                job_no,
+                task.get("description", ""),
+                task.get("billability", "Non-Billable"),
+                float(task.get("hours", 0.5)),
+                is_auto_added=True,
+                job_task_no=task.get("job_task_no", ""),
+            )
+            added_any = True
 
-        self.db.add_entry(
-            today_str,
-            "Internal Meeting",
-            "",
-            "Daily standup / internal meeting",
-            "Non-Billable",
-            0.5,
-            is_auto_added=True,
-        )
-        self.bridge.refresh_entries.emit()
+        if added_any:
+            self.bridge.refresh_entries.emit()
 
     def _check_hourly(self) -> None:
         now = datetime.now()
