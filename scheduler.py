@@ -85,18 +85,23 @@ class SchedulerThread(threading.Thread):
         added_any = False
         for task in self.config.daily_tasks:
             project_name = task.get("project_name", "")
-            job_no = task.get("job_no", "")
+            job_no       = task.get("job_no", "")
+            job_task_no  = task.get("job_task_no", "")
+            description  = task.get("description", "")
+            billability  = task.get("billability", "Non-Billable")
+            hours        = float(task.get("hours", 0.5))
+
             if self.db.has_auto_entry_for(today_str, project_name, job_no):
+                # Patch any legacy entry that was saved with an empty project_code
+                self.db.fix_auto_entry_codes(
+                    today_str, project_name, job_no, job_task_no,
+                    description, billability, hours,
+                )
                 continue
+
             self.db.add_entry(
-                today_str,
-                project_name,
-                job_no,
-                task.get("description", ""),
-                task.get("billability", "Non-Billable"),
-                float(task.get("hours", 0.5)),
-                is_auto_added=True,
-                job_task_no=task.get("job_task_no", ""),
+                today_str, project_name, job_no, description, billability, hours,
+                is_auto_added=True, job_task_no=job_task_no,
             )
             added_any = True
 
