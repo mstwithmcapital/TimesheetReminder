@@ -10,7 +10,7 @@ _DEFAULT_DAILY_TASKS = [
         "job_no": "Intech",
         "job_task_no": "1501",
         "description": "Daily standup / internal meeting",
-        "billability": "Non-Billable",
+        "billability": "No",
         "hours": 0.5,
     }
 ]
@@ -82,8 +82,12 @@ class AppConfig:
             )
 
             # New list format
+            _BILL_MAP = {"Billable": "Yes", "Non-Billable": "No"}
             if "daily_tasks" in data and isinstance(data["daily_tasks"], list):
-                self.daily_tasks = data["daily_tasks"]
+                self.daily_tasks = [
+                    {**t, "billability": _BILL_MAP.get(t.get("billability", ""), t.get("billability", "No"))}
+                    for t in data["daily_tasks"]
+                ]
             elif "daily_task_project_name" in data:
                 # Migrate old single-task fields to list format
                 self.daily_tasks = [{
@@ -91,7 +95,7 @@ class AppConfig:
                     "job_no":       str(data.get("daily_task_job_no",       _DEFAULT_DAILY_TASKS[0]["job_no"])),
                     "job_task_no":  str(data.get("daily_task_job_task_no",  _DEFAULT_DAILY_TASKS[0]["job_task_no"])),
                     "description":  str(data.get("daily_task_description",  _DEFAULT_DAILY_TASKS[0]["description"])),
-                    "billability":  str(data.get("daily_task_billability",  _DEFAULT_DAILY_TASKS[0]["billability"])),
+                    "billability":  _BILL_MAP.get(str(data.get("daily_task_billability", _DEFAULT_DAILY_TASKS[0]["billability"])), "No"),
                     "hours":       float(data.get("daily_task_hours",       _DEFAULT_DAILY_TASKS[0]["hours"])),
                 }]
         except Exception:

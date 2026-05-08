@@ -88,7 +88,7 @@ class SchedulerThread(threading.Thread):
             job_no       = task.get("job_no", "")
             job_task_no  = task.get("job_task_no", "")
             description  = task.get("description", "")
-            billability  = task.get("billability", "Non-Billable")
+            billability  = task.get("billability", "No")
             hours        = float(task.get("hours", 0.5))
 
             if self.db.has_auto_entry_for(today_str, project_name, job_no):

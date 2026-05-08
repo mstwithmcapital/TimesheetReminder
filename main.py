@@ -116,7 +116,7 @@ def main() -> None:
                 "Internal Meeting",
                 "",
                 "Daily standup / internal meeting",
-                "Non-Billable",
+                "No",
                 0.5,
                 is_auto_added=True,
             )

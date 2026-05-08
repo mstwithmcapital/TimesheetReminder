@@ -191,7 +191,7 @@ class SettingsDialog(QDialog):
         self.tasks_table.setItem(row, _COL_JOB_NO,  QTableWidgetItem(task.get("job_no", "")))
         self.tasks_table.setItem(row, _COL_TASK_NO, QTableWidgetItem(task.get("job_task_no", "")))
         self.tasks_table.setItem(row, _COL_DESC,    QTableWidgetItem(task.get("description", "")))
-        self.tasks_table.setItem(row, _COL_BILL,    QTableWidgetItem(task.get("billability", "Non-Billable")))
+        self.tasks_table.setItem(row, _COL_BILL,    QTableWidgetItem(task.get("billability", "No")))
         self.tasks_table.setItem(row, _COL_HOURS,   QTableWidgetItem(str(task.get("hours", 0.5))))
 
     def _row_to_task(self, row: int) -> dict:
@@ -309,7 +309,7 @@ class _DailyTaskEditDialog(QDialog):
         form.addRow("Description", self.desc_edit)
 
         self.bill_combo = QComboBox()
-        self.bill_combo.addItems(["Billable", "Non-Billable"])
+        self.bill_combo.addItems(["Yes", "No"])
         form.addRow("Billability", self.bill_combo)
 
         self.hours_spin = QDoubleSpinBox()
@@ -331,7 +331,7 @@ class _DailyTaskEditDialog(QDialog):
         self.job_no_edit.setText(task.get("job_no", ""))
         self.task_no_edit.setText(task.get("job_task_no", ""))
         self.desc_edit.setText(task.get("description", ""))
-        idx = self.bill_combo.findText(task.get("billability", "Non-Billable"))
+        idx = self.bill_combo.findText(task.get("billability", "No"))
         if idx >= 0:
             self.bill_combo.setCurrentIndex(idx)
         self.hours_spin.setValue(float(task.get("hours", 0.5)))

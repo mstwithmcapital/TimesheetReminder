@@ -138,7 +138,7 @@ class DayDetailPanel(QWidget):
 
         # Billability combo
         bill_combo = QComboBox()
-        bill_combo.addItems(["Billable", "Non-Billable"])
+        bill_combo.addItems(["Yes", "No"])
         bill_combo.setCurrentText(entry["billability"])
         bill_combo.currentTextChanged.connect(
             lambda val, r=row: self._on_bill_changed(r, val)

@@ -24,7 +24,7 @@ class WorkPopupDialog(QDialog):
       Ticket  — Job Type (static "Support"), Ticket No, Description, Billability, Hours
 
     Auto-fill priority: master table → most recent history entry.
-    Billability defaults to "Billable" for all entries.
+    Billability defaults to "Yes" for all entries.
     """
 
     def __init__(self, db: Database, state: AppState,
@@ -140,8 +140,8 @@ class WorkPopupDialog(QDialog):
         shared_form.addRow("", self.desc_char_label)
 
         self.bill_combo = QComboBox()
-        self.bill_combo.addItems(["Billable", "Non-Billable"])
-        shared_form.addRow("Billability", self.bill_combo)
+        self.bill_combo.addItems(["Yes", "No"])
+        shared_form.addRow("Billable?", self.bill_combo)
 
         default_h = 1.0 if self.add_mode else self.state.hours_since_last_popup()
         self.hours_spin = QDoubleSpinBox()
@@ -427,7 +427,7 @@ class WorkPopupDialog(QDialog):
             self.job_task_combo.setCurrentText(entry.get("job_task_no", ""))
 
         self.desc_edit.setPlainText(entry.get("description", ""))
-        idx = self.bill_combo.findText(entry.get("billability", "Billable"))
+        idx = self.bill_combo.findText(entry.get("billability", "Yes"))
         if idx >= 0:
             self.bill_combo.setCurrentIndex(idx)
         self.hours_spin.setValue(entry.get("hours", 1.0))

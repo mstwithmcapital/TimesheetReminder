@@ -305,7 +305,7 @@ class _ProjectEditDialog(QDialog):
         form.addRow("Default Description", self.desc_edit)
 
         self.bill_combo = QComboBox()
-        self.bill_combo.addItems(["Billable", "Non-Billable"])
+        self.bill_combo.addItems(["Yes", "No"])
         form.addRow("Billability", self.bill_combo)
 
         layout.addLayout(form)
@@ -371,7 +371,7 @@ class _TicketEditDialog(QDialog):
         form.addRow("Default Description", self.desc_edit)
 
         self.bill_combo = QComboBox()
-        self.bill_combo.addItems(["Billable", "Non-Billable"])
+        self.bill_combo.addItems(["Yes", "No"])
         form.addRow("Billability", self.bill_combo)
 
         layout.addLayout(form)

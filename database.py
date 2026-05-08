@@ -31,14 +31,14 @@ class Database:
                 name                TEXT NOT NULL UNIQUE,
                 code                TEXT NOT NULL DEFAULT '',
                 default_description TEXT NOT NULL DEFAULT '',
-                billability         TEXT NOT NULL DEFAULT 'Billable'
+                billability         TEXT NOT NULL DEFAULT 'Yes'
             );
 
             CREATE TABLE IF NOT EXISTS tickets (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
                 ticket_no   TEXT NOT NULL UNIQUE,
                 description TEXT NOT NULL DEFAULT '',
-                billability TEXT NOT NULL DEFAULT 'Billable'
+                billability TEXT NOT NULL DEFAULT 'Yes'
             );
 
             CREATE TABLE IF NOT EXISTS entries (
@@ -47,7 +47,7 @@ class Database:
                 project_name  TEXT NOT NULL,
                 project_code  TEXT NOT NULL DEFAULT '',
                 description   TEXT NOT NULL DEFAULT '',
-                billability   TEXT NOT NULL DEFAULT 'Billable',
+                billability   TEXT NOT NULL DEFAULT 'Yes',
                 hours         REAL NOT NULL DEFAULT 1.0,
                 is_auto_added INTEGER NOT NULL DEFAULT 0,
                 created_at    TEXT NOT NULL
@@ -74,6 +74,12 @@ class Database:
             c.commit()
         except sqlite3.OperationalError:
             pass
+
+        # Migrate legacy billability values to Yes/No
+        for table in ("entries", "projects", "tickets"):
+            c.execute(f"UPDATE {table} SET billability='Yes' WHERE billability='Billable'")
+            c.execute(f"UPDATE {table} SET billability='No'  WHERE billability='Non-Billable'")
+        c.commit()
 
     # ── Projects ──────────────────────────────────────────────────────────────
 
