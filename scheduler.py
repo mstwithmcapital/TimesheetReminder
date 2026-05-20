@@ -8,6 +8,8 @@ from PyQt5.QtCore import QObject, pyqtSignal
 from config import AppConfig
 from state import AppState
 
+UPTIME_ALERT_HOURS = 9    # notify once when the app session reaches this duration
+
 WEEKLY_REMINDER_H = 16    # Friday 4 PM — not user-configurable yet
 SATURDAY_REMINDER_H = 10  # first Saturday 10 AM — not user-configurable yet
 LWD_REMINDER_H = 10       # last working day of month 10 AM — not user-configurable yet
@@ -39,6 +41,7 @@ class SchedulerBridge(QObject):
     show_eod_summary = pyqtSignal()
     show_weekly_summary = pyqtSignal(str)   # "weekly" | "saturday"
     refresh_entries = pyqtSignal()          # emitted after auto standup is added
+    show_uptime_alert = pyqtSignal()        # fired once when PC uptime hits 9 h
 
 
 class SchedulerThread(threading.Thread):
@@ -51,6 +54,8 @@ class SchedulerThread(threading.Thread):
         self.db = db
         self._last_hourly_check: datetime | None = None
         self._last_lwd_check: datetime | None = None
+        self._uptime_notified: bool = False
+        self._session_start: datetime = datetime.now()
 
     def run(self) -> None:
         # Check every 60 seconds; individual methods guard their own timing.
@@ -60,6 +65,7 @@ class SchedulerThread(threading.Thread):
         schedule.every(1).minutes.do(self._check_weekly)
         schedule.every(1).minutes.do(self._check_saturday)
         schedule.every(1).minutes.do(self._check_lwd)
+        schedule.every(1).minutes.do(self._check_uptime)
 
         while True:
             schedule.run_pending()
@@ -217,3 +223,16 @@ class SchedulerThread(threading.Thread):
                 return
         self._last_lwd_check = now
         self.bridge.show_weekly_summary.emit("lwd")
+
+    def set_session_start(self, dt: datetime) -> None:
+        """Override the session start time (called when user sets work start manually)."""
+        self._session_start = dt
+        self._uptime_notified = False  # re-arm so alert fires at 9h from new start
+
+    def _check_uptime(self) -> None:
+        if self._uptime_notified:
+            return
+        elapsed = (datetime.now() - self._session_start).total_seconds()
+        if elapsed >= UPTIME_ALERT_HOURS * 3600:
+            self._uptime_notified = True
+            self.bridge.show_uptime_alert.emit()

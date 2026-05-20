@@ -1,17 +1,18 @@
 import os
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 from PyQt5.QtCore import QDate, Qt, QTimer
 from PyQt5.QtWidgets import (
-    QAction, QApplication, QFileDialog, QHBoxLayout,
-    QLabel, QMainWindow, QMenu, QSizePolicy, QSplitter,
-    QSystemTrayIcon, QToolBar, QVBoxLayout, QWidget,
+    QAction, QApplication, QDialog, QDialogButtonBox, QFileDialog,
+    QFormLayout, QHBoxLayout, QLabel, QMainWindow, QMenu, QPushButton,
+    QSizePolicy, QSplitter, QSystemTrayIcon, QTimeEdit, QToolBar,
+    QVBoxLayout, QWidget,
 )
 
 from config import AppConfig
 from database import Database
-from scheduler import SchedulerBridge
+from scheduler import SchedulerBridge, SchedulerThread
 from state import AppState
 from ui.calendar_widget import TimesheetCalendar
 from ui.day_detail_panel import DayDetailPanel
@@ -25,12 +26,15 @@ class MainWindow(QMainWindow):
         state: AppState,
         bridge: SchedulerBridge,
         config: AppConfig,
+        scheduler: SchedulerThread = None,
     ) -> None:
         super().__init__()
         self.db = db
         self.state = state
         self.bridge = bridge
         self.config = config
+        self._scheduler = scheduler
+        self._session_start = datetime.now()
 
         self.setWindowTitle("Timesheet Tracker")
         self.setWindowIcon(make_app_icon())
@@ -120,6 +124,18 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(f"Data saved to: {data_dir}")
         self.statusBar().setStyleSheet("color: #555; font-size: 11px;")
 
+        self._uptime_label = QPushButton()
+        self._uptime_label.setFlat(True)
+        self._uptime_label.setCursor(Qt.PointingHandCursor)
+        self._uptime_label.setToolTip("Click to set work start time")
+        self._uptime_label.clicked.connect(self._set_work_start_time)
+        self.statusBar().addPermanentWidget(self._uptime_label)
+        self._update_uptime_label()
+
+        self._uptime_timer = QTimer(self)
+        self._uptime_timer.timeout.connect(self._update_uptime_label)
+        self._uptime_timer.start(60_000)
+
     def _setup_tray(self) -> None:
         self.tray = QSystemTrayIcon(self)
         self.tray.setIcon(make_app_icon())
@@ -149,6 +165,7 @@ class MainWindow(QMainWindow):
         self.bridge.show_eod_summary.connect(self.open_eod_dialog)
         self.bridge.show_weekly_summary.connect(self.open_weekly_summary)
         self.bridge.refresh_entries.connect(self._on_refresh_entries)
+        self.bridge.show_uptime_alert.connect(self._on_uptime_alert)
 
     # ── Slots ─────────────────────────────────────────────────────────────────
 
@@ -230,6 +247,61 @@ class MainWindow(QMainWindow):
     def _on_tray_activated(self, reason) -> None:
         if reason == QSystemTrayIcon.DoubleClick:
             self._show_window()
+
+    def _update_uptime_label(self) -> None:
+        total_seconds = (datetime.now() - self._session_start).total_seconds()
+        total_minutes = int(total_seconds // 60)
+        hours, minutes = divmod(total_minutes, 60)
+        target_minutes = 9 * 60
+        elapsed_str = f"{hours}h {minutes:02d}m"
+        base_style = "font-size: 11px; border: none; background: transparent; padding: 0 6px 0 0;"
+        if total_minutes >= target_minutes:
+            self._uptime_label.setText(f"Uptime: {elapsed_str}  — take a break!")
+            self._uptime_label.setStyleSheet(base_style + "color: #c62828; font-weight: bold;")
+        else:
+            remaining = target_minutes - total_minutes
+            rem_h, rem_m = divmod(remaining, 60)
+            rem_str = f"{rem_h}h {rem_m:02d}m" if rem_h else f"{rem_m}m"
+            self._uptime_label.setText(f"Uptime: {elapsed_str}  ({rem_str} to 9h)")
+            self._uptime_label.setStyleSheet(base_style + "color: #555;")
+
+    def _set_work_start_time(self) -> None:
+        from PyQt5.QtCore import QTime
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Set Work Start Time")
+        dlg.setFixedWidth(280)
+        layout = QFormLayout(dlg)
+        layout.setSpacing(10)
+        layout.setContentsMargins(16, 16, 16, 12)
+
+        time_edit = QTimeEdit()
+        time_edit.setDisplayFormat("hh:mm AP")
+        time_edit.setTime(QTime(self._session_start.hour, self._session_start.minute))
+        layout.addRow("Work started at:", time_edit)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(dlg.accept)
+        buttons.rejected.connect(dlg.reject)
+        layout.addRow(buttons)
+
+        if dlg.exec_() == QDialog.Accepted:
+            t = time_edit.time()
+            now = datetime.now()
+            new_start = now.replace(hour=t.hour(), minute=t.minute(), second=0, microsecond=0)
+            if new_start > now:
+                new_start = now
+            self._session_start = new_start
+            if self._scheduler:
+                self._scheduler.set_session_start(new_start)
+            self._update_uptime_label()
+
+    def _on_uptime_alert(self) -> None:
+        self.tray.showMessage(
+            "9-Hour Uptime Reached",
+            "Your PC has been running for 9 hours. Time to save your work and take a break!",
+            QSystemTrayIcon.Information,
+            10000,
+        )
 
     def closeEvent(self, event) -> None:
         event.ignore()
